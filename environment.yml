@@ -1,5 +1,6 @@
 name: fsmol
 channels:
+  - conda-forge
   - rdkit
   - defaults
   - plotly
@@ -17,6 +18,7 @@ dependencies:
   - typing-extensions
   - pytorch=1.10.0=py3.7_cuda11.3_cudnn8.2.0_0
   - pip:
+      - gpytorch
       - docopt
       - dpu-utils>=0.2.13
       - tensorflow>=2.4
