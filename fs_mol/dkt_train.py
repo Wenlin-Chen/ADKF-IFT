@@ -43,16 +43,8 @@ def parse_command_line():
             "gnn+ecfp+pc-descs+fc",
         ],
         default="gnn+ecfp+fc",
-        #default="gnn",
         help="Choice of features to use",
     )
-    #parser.add_argument(
-    #    "--distance_metric",
-    #    type=str,
-    #    choices=["mahalanobis", "euclidean"],
-    #    default="mahalanobis",
-    #    help="Choice of distance to use.",
-    #)
     add_graph_feature_extractor_arguments(parser)
 
     parser.add_argument("--support_set_size", type=int, default=64, help="Size of support set")
@@ -155,6 +147,8 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
+    '''
     try:
         main()
     except Exception:
@@ -164,3 +158,4 @@ if __name__ == "__main__":
         _, value, tb = sys.exc_info()
         traceback.print_exc()
         pdb.post_mortem(tb)
+    '''
