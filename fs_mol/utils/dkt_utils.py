@@ -268,7 +268,7 @@ class DKTModelTrainer(DKTModel):
         self.optimizer = torch.optim.Adam(
             [
                 {"params": other_params, "lr": self.config.learning_rate},
-                {"params": gnn_params, "lr": self.config.learning_rate / 10},
+                {"params": gnn_params, "lr": self.config.learning_rate},
             ],
         )
 
