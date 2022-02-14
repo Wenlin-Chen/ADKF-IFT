@@ -69,8 +69,8 @@ class DKTModel(nn.Module):
             self.normalizing_features = False
 
     def __create_tail_GP(self, kernel_type="cossim"):
-        dummy_train_x = torch.ones(256, 512)
-        dummy_train_y = torch.ones(256)
+        dummy_train_x = torch.ones(64, 512)
+        dummy_train_y = torch.ones(64)
 
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
         self.gp_model = ExactGPLayer(train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, kernel=kernel_type)
