@@ -82,10 +82,11 @@ def run_on_batches(
             # divide this batch loss by the total number of accumulation steps
             batch_loss = batch_loss / num_gradient_accumulation_steps
             batch_loss.backward()
-            total_loss += (
-                batch_loss.detach() * batch_features.num_query_samples * num_gradient_accumulation_steps
-            )
+
             num_batch_samples = batch_features.num_support_samples + batch_features.num_query_samples
+            total_loss += (
+                batch_loss.detach() * num_batch_samples * num_gradient_accumulation_steps
+            )
             total_num_samples += num_batch_samples
 
         # compute metric at test time

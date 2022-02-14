@@ -57,7 +57,7 @@ def parse_command_line():
     parser.add_argument(
         "--tasks_per_batch",
         type=int,
-        default=1,
+        default=16,
         help="Number of tasks to accumulate gradients for.",
     )
 
@@ -74,14 +74,16 @@ def parse_command_line():
     parser.add_argument(
         "--validation-support-set-sizes",
         type=json.loads,
-        default=[16, 128],
+        #default=[16, 128],
+        default=[16, 64],
         help="JSON list selecting the number of datapoints sampled as support set data during evaluation through finetuning on the validation tasks.",
     )
 
     parser.add_argument(
         "--validation-query-set-size",
         type=int,
-        default=512,
+        #default=512,
+        default=256,
         help="Maximum number of datapoints sampled as query data during evaluation through finetuning on the validation tasks.",
     )
 

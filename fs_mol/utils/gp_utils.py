@@ -14,24 +14,25 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         likelihood.noise_covar.raw_noise.requires_grad = False
         likelihood.noise_covar.noise = torch.tensor(0.1)
         super().__init__(train_x, train_y, likelihood)
-        self.mean_module = gpytorch.means.ConstantMean()
+        #self.mean_module = gpytorch.means.ConstantMean()
+        self.mean_module = gpytorch.means.ZeroMean()
 
         ## Linear kernel
-        if(kernel=='linear'):
+        if kernel=='linear':
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel())
         ## RBF kernel
-        elif(kernel=='rbf' or kernel=='RBF'):
+        elif kernel=='rbf' or kernel=='RBF':
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
         ## Matern kernel
-        elif(kernel=='matern'):
+        elif kernel=='matern':
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel())
         ## Polynomial (p=1)
-        elif(kernel=='poli1'):
+        elif kernel=='poli1':
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.PolynomialKernel(power=1))
         ## Polynomial (p=2)
-        elif(kernel=='poli2'):
+        elif kernel=='poli2':
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.PolynomialKernel(power=2))
-        elif(kernel=='cossim' or kernel=='bncossim'):
+        elif kernel=='cossim':# or kernel=='bncossim':
         ## Cosine distance and BatchNorm Cosine distance
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel())
             self.covar_module.base_kernel.variance = 1.0
