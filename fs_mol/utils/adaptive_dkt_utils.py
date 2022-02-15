@@ -342,8 +342,8 @@ class ADKTModelTrainer(ADKTModel):
                 # using the validation loss
                 assert len(batches) == 1
                 self.train()
-                batch_logits = self(batches[0], train_loss=False)
-                batch_loss = self.compute_loss(batch_logits)
+                batch_logits = self(batches[0], train_loss=False, predictive_val_loss=True)
+                batch_loss = self.compute_loss(batch_logits, predictive=True)
                 batch_loss = batch_loss / self.config.tasks_per_batch
                 batch_loss.backward()
                 task_loss = batch_loss.detach() * self.config.tasks_per_batch

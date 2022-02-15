@@ -105,7 +105,7 @@ class ADKTModel(nn.Module):
     def device(self) -> torch.device:
         return next(self.parameters()).device
 
-    def forward(self, input_batch: DKTBatch, train_loss: bool):
+    def forward(self, input_batch: DKTBatch, train_loss: bool, predictive_val_loss: bool=False):
         support_features: List[torch.Tensor] = []
         query_features: List[torch.Tensor] = []
 
@@ -140,8 +140,15 @@ class ADKTModel(nn.Module):
                 self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
                 logits = None
             else: # compute val loss (on the query set)
-                self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
-                logits = self.gp_model(query_features_flat)
+                if predictive_val_loss:
+                    self.gp_model.eval()
+                    with gpytorch.settings.detach_test_caches(False):
+                        self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                        logits = self.gp_model(query_features_flat)
+                    self.predictive_targets = query_labels_converted
+                else:
+                    self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
+                    logits = self.gp_model(query_features_flat)
 
         # do GP posterior inference if the model is in the evaluation mode
         else:
@@ -155,9 +162,15 @@ class ADKTModel(nn.Module):
 
         return logits
 
-    def compute_loss(self, logits: MultivariateNormal) -> torch.Tensor:
+    def compute_loss(self, logits: MultivariateNormal, predictive: bool=False) -> torch.Tensor:
         assert self.training == True
-        return -self.mll(logits, self.gp_model.train_targets)
+        if predictive:
+            with gpytorch.settings.detach_test_caches(False):
+                predictive_loss = -self.gp_likelihood(logits).log_prob(self.predictive_targets)
+            self.gp_model.train()
+            return predictive_loss
+        else:
+            return -self.mll(logits, self.gp_model.train_targets)
 
     def __convert_bool_labels(self, labels):
         # True -> 1.0; False -> -1.0

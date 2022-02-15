@@ -94,7 +94,6 @@ def main():
         model_weights_file,
         device=device,
     )
-    #model.save_gp_states()
 
     test(
         model,
