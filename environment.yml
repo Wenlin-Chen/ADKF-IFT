@@ -18,6 +18,7 @@ dependencies:
   - typing-extensions
   - pytorch=1.10.0=py3.7_cuda11.3_cudnn8.2.0_0
   - pip:
+      - botorch
       - gpytorch
       - docopt
       - dpu-utils>=0.2.13

@@ -119,7 +119,8 @@ class DKTModel(nn.Module):
             self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
             self.gp_model.eval()
 
-            logits = self.gp_likelihood(self.gp_model(query_features_flat))
+            with torch.no_grad():
+                logits = self.gp_likelihood(self.gp_model(query_features_flat))
 
         return logits
 

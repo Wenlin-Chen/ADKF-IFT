@@ -20,7 +20,7 @@ from fs_mol.data.dkt import (
     get_dkt_batcher,
     task_sample_to_dkt_task_sample,
 )
-from fs_mol.models.dkt import DKTModel, DKTModelConfig
+from fs_mol.models.adaptive_dkt import ADKTModel, ADKTModelConfig
 from fs_mol.models.abstract_torch_fsmol_model import MetricType
 from fs_mol.utils.metrics import (
     BinaryEvalMetrics,
@@ -32,12 +32,14 @@ from fs_mol.utils.metric_logger import MetricLogger
 from fs_mol.utils.torch_utils import torchify
 from fs_mol.utils.test_utils import eval_model, FSMolTaskSampleEvalResults
 
+from botorch.optim.fit import fit_gpytorch_scipy
+
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class DKTModelTrainerConfig(DKTModelConfig):
+class ADKTModelTrainerConfig(ADKTModelConfig):
     batch_size: int = 256
     tasks_per_batch: int = 16
     support_set_size: int = 16
@@ -54,62 +56,49 @@ class DKTModelTrainerConfig(DKTModelConfig):
 
 
 def run_on_batches(
-    model: DKTModel,
+    model: ADKTModel,
     batches: List[DKTBatch],
     batch_labels: List[torch.Tensor],
     train: bool = False,
-    tasks_per_batch: int = 1,
+    #tasks_per_batch: int = 1,
 ) -> Tuple[float, BinaryEvalMetrics]:
 
     if train:
-        model.train()
         assert len(batches) == 1
-    else:
-        model.eval()
 
     total_loss, total_num_samples = 0.0, 0
     task_preds: List[np.ndarray] = []
     task_labels: List[np.ndarray] = []
 
-    num_gradient_accumulation_steps = len(batches) * tasks_per_batch
+    #num_gradient_accumulation_steps = len(batches) * tasks_per_batch
     for batch_features, batch_labels in zip(batches, batch_labels):
         # Compute task loss
-        batch_logits = model(batch_features)
+        model.train()
+        model.reinit_gp_params()
+        _ = model(batch_features, train_loss=True)
+        fit_gpytorch_scipy(model.mll)
 
-        # Compute loss at training time
-        if train:
-            batch_loss = model.compute_loss(batch_logits)
-            # divide this batch loss by the total number of accumulation steps
-            batch_loss = batch_loss / num_gradient_accumulation_steps
-            batch_loss.backward()
-
-            num_batch_samples = batch_features.num_support_samples + batch_features.num_query_samples
-            total_loss += (
-                batch_loss.detach() * num_batch_samples * num_gradient_accumulation_steps
-            )
-            total_num_samples += num_batch_samples
-
-        # compute metric at test time
-        else:
-            batch_preds = torch.sigmoid(batch_logits.mean).detach().cpu().numpy()
-            task_preds.append(batch_preds)
-            task_labels.append(batch_labels.detach().cpu().numpy())
+        # Compute train loss on the support set at training time
+        if not train:
+            model.eval()
+            with torch.no_grad():
+                batch_logits = model(batch_features, train_loss=None)
+                batch_preds = torch.sigmoid(batch_logits.mean).detach().cpu().numpy()
+                task_preds.append(batch_preds)
+                task_labels.append(batch_labels.detach().cpu().numpy())
 
     if train:
-        # we will report loss per sample as before.
-        per_sample_loss = total_loss.cpu().item() / total_num_samples
         metrics = None
     else:
-        per_sample_loss = None
         metrics = compute_binary_task_metrics(
             predictions=np.concatenate(task_preds, axis=0), labels=np.concatenate(task_labels, axis=0)
         )
 
-    return per_sample_loss, metrics
+    return metrics
 
 
 def evaluate_dkt_model(
-    model: DKTModel,
+    model: ADKTModel,
     dataset: FSMolDataset,
     support_sizes: List[int] = [16, 128],
     num_samples: int = 5,
@@ -129,7 +118,7 @@ def evaluate_dkt_model(
             task_sample_to_dkt_task_sample(task_sample, batcher), device=model.device
         )
 
-        _, result_metrics = run_on_batches(
+        result_metrics = run_on_batches(
             model,
             batches=dkt_task_sample.batches,
             batch_labels=dkt_task_sample.batch_labels,
@@ -157,14 +146,14 @@ def evaluate_dkt_model(
 
 
 def validate_by_finetuning_on_tasks(
-    model: DKTModel,
+    model: ADKTModel,
     dataset: FSMolDataset,
     seed: int = 0,
     aml_run=None,
     metric_to_use: MetricType = "avg_precision",
 ) -> float:
     """
-    Validation function for DKTModel. Similar to test function;
+    Validation function for ADKTModel. Similar to test function;
     each validation task is used to evaluate the model more than once, the
     final results are a mean value for all tasks over the requested metric.
     """
@@ -189,11 +178,11 @@ def validate_by_finetuning_on_tasks(
     return mean_metrics[metric_to_use][0]
 
 
-class DKTModelTrainer(DKTModel):
-    def __init__(self, config: DKTModelTrainerConfig):
+class ADKTModelTrainer(ADKTModel):
+    def __init__(self, config: ADKTModelTrainerConfig):
         super().__init__(config)
         self.config = config
-        self.optimizer = torch.optim.Adam(self.parameters(), config.learning_rate)
+        self.optimizer = torch.optim.Adam(self.feature_extractor_params(), config.learning_rate)
         self.lr_scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
 
     def get_model_state(self) -> Dict[str, Any]:
@@ -220,7 +209,7 @@ class DKTModelTrainer(DKTModel):
     def load_model_weights(
         self,
         path: str,
-        load_task_specific_weights: bool,
+        #load_task_specific_weights: bool,
         quiet: bool = False,
         device: Optional[torch.device] = None,
     ):
@@ -287,7 +276,7 @@ class DKTModelTrainer(DKTModel):
         config_overrides: Dict[str, Any] = {},
         quiet: bool = False,
         device: Optional[torch.device] = None,
-    ) -> "DKTModelTrainer":
+    ) -> "ADKTModelTrainer":
         """Build the model architecture based on a saved checkpoint."""
         checkpoint = torch.load(model_file, map_location=device)
         config = checkpoint["model_config"]
@@ -295,11 +284,11 @@ class DKTModelTrainer(DKTModel):
         if not quiet:
             logger.info(f" Loading model configuration from {model_file}.")
 
-        model = DKTModelTrainer(config)
+        model = ADKTModelTrainer(config)
         model.load_model_weights(
             path=model_file,
             quiet=quiet,
-            load_task_specific_weights=True,
+            #load_task_specific_weights=True,
             device=device,
         )
         return model
@@ -332,22 +321,35 @@ class DKTModelTrainer(DKTModel):
 
             task_batch_losses: List[float] = []
             #task_batch_metrics: List[BinaryEvalMetrics] = []
+            # find the best GP parameters given the current GNN parameters
             for _ in range(self.config.tasks_per_batch):
                 task_sample = next(train_task_sample_iterator)
                 train_task_sample = torchify(task_sample, device=device)
-                task_loss, _ = run_on_batches(
+                batches = train_task_sample.batches
+                batch_labels = train_task_sample.batch_labels
+                _ = run_on_batches(
                     self,
-                    batches=train_task_sample.batches,
-                    batch_labels=train_task_sample.batch_labels,
+                    batches=batches,
+                    batch_labels=batch_labels,
                     train=True,
-                    tasks_per_batch=self.config.tasks_per_batch,
+                    #tasks_per_batch=self.config.tasks_per_batch,
                 )
+                # compute gradient w.r.t. GNN parameters with GP parameters set to the best
+                # using the validation loss
+                assert len(batches) == 1
+                self.train()
+                batch_logits = self(batches[0], train_loss=False)
+                batch_loss = self.compute_loss(batch_logits)
+                batch_loss = batch_loss / self.config.tasks_per_batch
+                batch_loss.backward()
+                task_loss = batch_loss.detach() * self.config.tasks_per_batch
+                task_loss = task_loss.cpu().item()
                 task_batch_losses.append(task_loss)
                 #task_batch_metrics.append(task_metrics)
 
             # Now do a training step - run_on_batches will have accumulated gradients
             if self.config.clip_value is not None:
-                torch.nn.utils.clip_grad_norm_(self.parameters(), self.config.clip_value)
+                torch.nn.utils.clip_grad_norm_(self.feature_extractor_params(), self.config.clip_value)
             self.optimizer.step()
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()

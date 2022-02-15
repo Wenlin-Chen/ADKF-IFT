@@ -21,7 +21,7 @@ PHYS_CHEM_DESCRIPTORS_DIM = 42
 
 
 @dataclass(frozen=True)
-class DKTModelConfig:
+class ADKTModelConfig:
     # Model configuration:
     graph_feature_extractor_config: GraphFeatureExtractorConfig = GraphFeatureExtractorConfig()
     used_features: Literal[
@@ -30,8 +30,8 @@ class DKTModelConfig:
     #distance_metric: Literal["mahalanobis", "euclidean"] = "mahalanobis"
 
 
-class DKTModel(nn.Module):
-    def __init__(self, config: DKTModelConfig):
+class ADKTModel(nn.Module):
+    def __init__(self, config: ADKTModelConfig):
         super().__init__()
         self.config = config
 
@@ -60,27 +60,37 @@ class DKTModel(nn.Module):
                 nn.Linear(1024, 512),
             )
 
-        kernel_type = "cossim"
-        self.__create_tail_GP(kernel_type=kernel_type)
+        self.kernel_type = "matern"
+        self.__create_tail_GP(kernel_type=self.kernel_type)
 
-        if kernel_type == "cossim":
+        if self.kernel_type == "cossim":
             self.normalizing_features = True
         else:
             self.normalizing_features = False
 
-    def __create_tail_GP(self, kernel_type="cossim"):
+    def feature_extractor_params(self):
+        fe_params = []
+        for name, param in self.named_parameters():
+            if not name.startswith("gp_"):
+                fe_params.append(param)
+        return fe_params
+
+    def reinit_gp_params(self):
+        self.__create_tail_GP(kernel_type=self.kernel_type)
+
+    def __create_tail_GP(self, kernel_type="matern"):
         dummy_train_x = torch.ones(64, 512)
         dummy_train_y = torch.ones(64)
 
-        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
-        self.gp_model = ExactGPLayer(train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, kernel=kernel_type)
+        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood().to(self.device)
+        self.gp_model = ExactGPLayer(train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, kernel=kernel_type).to(self.device)
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model)
 
     @property
     def device(self) -> torch.device:
         return next(self.parameters()).device
 
-    def forward(self, input_batch: DKTBatch):
+    def forward(self, input_batch: DKTBatch, train_loss: bool):
         support_features: List[torch.Tensor] = []
         query_features: List[torch.Tensor] = []
 
@@ -108,18 +118,25 @@ class DKTModel(nn.Module):
         support_labels_converted = self.__convert_bool_labels(input_batch.support_labels)
         query_labels_converted = self.__convert_bool_labels(input_batch.query_labels)
 
+        # compute train/val loss if the model is in the training mode
         if self.training:
-            combined_features_flat = torch.cat([support_features_flat, query_features_flat], dim=0)
-            combined_labels_converted = torch.cat([support_labels_converted, query_labels_converted])
+            assert train_loss is not None
+            if train_loss: # compute train loss (on the support set)
+                self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
+                logits = None
+            else: # compute val loss (on the query set)
+                self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
+                logits = self.gp_model(query_features_flat)
 
-            self.gp_model.set_train_data(inputs=combined_features_flat, targets=combined_labels_converted, strict=False)
-            logits = self.gp_model(combined_features_flat)
+        # do GP posterior inference if the model is in the evaluation mode
         else:
+            assert train_loss is None
             self.gp_model.train()
             self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
             self.gp_model.eval()
 
-            logits = self.gp_likelihood(self.gp_model(query_features_flat))
+            with torch.no_grad():
+                logits = self.gp_likelihood(self.gp_model(query_features_flat))
 
         return logits
 

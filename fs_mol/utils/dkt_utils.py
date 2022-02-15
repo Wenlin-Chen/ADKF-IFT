@@ -91,9 +91,10 @@ def run_on_batches(
 
         # compute metric at test time
         else:
-            batch_preds = torch.sigmoid(batch_logits.mean).detach().cpu().numpy()
-            task_preds.append(batch_preds)
-            task_labels.append(batch_labels.detach().cpu().numpy())
+            with torch.no_grad():
+                batch_preds = torch.sigmoid(batch_logits.mean).detach().cpu().numpy()
+                task_preds.append(batch_preds)
+                task_labels.append(batch_labels.detach().cpu().numpy())
 
     if train:
         # we will report loss per sample as before.
