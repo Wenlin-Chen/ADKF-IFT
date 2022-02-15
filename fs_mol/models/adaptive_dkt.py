@@ -166,7 +166,7 @@ class ADKTModel(nn.Module):
         assert self.training == True
         if predictive:
             with gpytorch.settings.detach_test_caches(False):
-                predictive_loss = -self.gp_likelihood(logits).log_prob(self.predictive_targets)
+                predictive_loss = -self.gp_likelihood(logits).log_prob(self.predictive_targets) / self.predictive_targets.shape[0]
             self.gp_model.train()
             return predictive_loss
         else:
