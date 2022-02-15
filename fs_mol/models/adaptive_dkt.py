@@ -16,6 +16,8 @@ from fs_mol.utils.gp_utils import ExactGPLayer
 import gpytorch
 from gpytorch.distributions import MultivariateNormal
 
+from copy import deepcopy
+
 FINGERPRINT_DIM = 2048
 PHYS_CHEM_DESCRIPTORS_DIM = 42
 
@@ -57,13 +59,18 @@ class ADKTModel(nn.Module):
             self.fc = nn.Sequential(
                 nn.Linear(fc_in_dim, 1024),
                 nn.ReLU(),
-                nn.Linear(1024, 512),
+                nn.Linear(1024, self.config.graph_feature_extractor_config.readout_config.output_dim),
             )
 
-        self.kernel_type = "matern"
-        self.__create_tail_GP(kernel_type=self.kernel_type)
+        kernel_type = self.config.gp_kernel
+        if self.config.use_ard:
+            ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
+        else:
+            ard_num_dims = None
+        self.__create_tail_GP(kernel_type=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=self.config.use_lengthscale_prior)
+        self.save_gp_states()
 
-        if self.kernel_type == "cossim":
+        if kernel_type == "cossim":
             self.normalizing_features = True
         else:
             self.normalizing_features = False
@@ -76,14 +83,22 @@ class ADKTModel(nn.Module):
         return fe_params
 
     def reinit_gp_params(self):
-        self.__create_tail_GP(kernel_type=self.kernel_type)
+        self.gp_model.load_state_dict(self.cached_gp_model_state)
+        self.gp_likelihood.load_state_dict(self.cached_gp_likelihood_state)
 
-    def __create_tail_GP(self, kernel_type="matern"):
-        dummy_train_x = torch.ones(64, 512)
+    def save_gp_states(self):
+        self.cached_gp_model_state = deepcopy(self.gp_model.state_dict())
+        self.cached_gp_likelihood_state = deepcopy(self.gp_likelihood.state_dict())
+
+    def __create_tail_GP(self, kernel_type, ard_num_dims=None, use_lengthscale_prior=False):
+        dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
         dummy_train_y = torch.ones(64)
 
-        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood().to(self.device)
-        self.gp_model = ExactGPLayer(train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, kernel=kernel_type).to(self.device)
+        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        self.gp_model = ExactGPLayer(
+            train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
+            kernel=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=use_lengthscale_prior
+        )
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model)
 
     @property

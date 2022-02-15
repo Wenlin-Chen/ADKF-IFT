@@ -54,6 +54,10 @@ class ADKTModelTrainerConfig(ADKTModelConfig):
     learning_rate: float = 0.001
     clip_value: Optional[float] = None
 
+    use_ard: bool = False
+    gp_kernel: str = "matern"
+    use_lengthscale_prior: bool = True
+    
 
 def run_on_batches(
     model: ADKTModel,
@@ -97,7 +101,7 @@ def run_on_batches(
     return metrics
 
 
-def evaluate_dkt_model(
+def evaluate_adkt_model(
     model: ADKTModel,
     dataset: FSMolDataset,
     support_sizes: List[int] = [16, 128],
@@ -158,7 +162,7 @@ def validate_by_finetuning_on_tasks(
     final results are a mean value for all tasks over the requested metric.
     """
 
-    task_results = evaluate_dkt_model(
+    task_results = evaluate_adkt_model(
         model,
         dataset,
         support_sizes=model.config.validation_support_set_sizes,

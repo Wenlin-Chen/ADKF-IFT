@@ -995,8 +995,8 @@ def plot_by_size(
 
     """
 
-    markers = ["s", "P", "*", "X", "^", "o", "D", "p"]
-    color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black"]
+    markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "^", ">", "<"]
+    color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal"]
 
     def get_style(cls, model_name):
         if cls == "all":
@@ -1039,7 +1039,7 @@ def plot_by_size(
         }
     )
 
-    fig, ax = plt.subplots(figsize=(10, 10))
+    fig, ax = plt.subplots(figsize=(15, 15))
 
     for j, model_name in enumerate(model_summaries.keys()):
 
@@ -1062,7 +1062,7 @@ def plot_by_size(
                 linewidth=lw,
             )
 
-    ax.legend(loc="best", ncol=2)
+    ax.legend(loc="upper left", ncol=2)
     ax.set_ylabel("$\Delta$ AUPRC")
     ax.set_xlabel("$|\mathcal{T}_{u, support}|$")
     ax.set_xticks(TRAIN_SIZES_TO_COMPARE)

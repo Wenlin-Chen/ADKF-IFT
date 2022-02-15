@@ -57,23 +57,30 @@ class DKTModel(nn.Module):
             self.fc = nn.Sequential(
                 nn.Linear(fc_in_dim, 1024),
                 nn.ReLU(),
-                nn.Linear(1024, 512),
+                nn.Linear(1024, self.config.graph_feature_extractor_config.readout_config.output_dim),
             )
 
-        kernel_type = "cossim"
-        self.__create_tail_GP(kernel_type=kernel_type)
+        kernel_type = self.config.gp_kernel
+        if self.config.use_ard:
+            ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
+        else:
+            ard_num_dims = None
+        self.__create_tail_GP(kernel_type=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=self.config.use_lengthscale_prior)
 
         if kernel_type == "cossim":
             self.normalizing_features = True
         else:
             self.normalizing_features = False
 
-    def __create_tail_GP(self, kernel_type="cossim"):
-        dummy_train_x = torch.ones(64, 512)
+    def __create_tail_GP(self, kernel_type, ard_num_dims=None, use_lengthscale_prior=False):
+        dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
         dummy_train_y = torch.ones(64)
 
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
-        self.gp_model = ExactGPLayer(train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, kernel=kernel_type)
+        self.gp_model = ExactGPLayer(
+            train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
+            kernel=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=use_lengthscale_prior
+        )
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model)
 
     @property

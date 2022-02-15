@@ -103,6 +103,22 @@ def parse_command_line():
         default=None,
         help="Path to a pretrained GNN model to use as a starting point.",
     )
+    parser.add_argument(
+        "--use-ard",
+        action="store_true",
+        help="Use a different lengthscale for each input dimension to the GP.",
+    )
+    parser.add_argument(
+        "--gp-kernel",
+        type=str,
+        default="matern",
+        help="The GP kernel.",
+    )
+    parser.add_argument(
+        "--use-lengthscale-prior",
+        action="store_true",
+        help="Put a logNormal prior over the lengthscale(s).",
+    )
     args = parser.parse_args()
     return args
 
@@ -123,6 +139,9 @@ def make_trainer_config(args: argparse.Namespace) -> DKTModelTrainerConfig:
         num_train_steps=args.num_train_steps,
         learning_rate=args.lr,
         clip_value=args.clip_value,
+        use_ard=args.use_ard,
+        gp_kernel=args.gp_kernel,
+        use_lengthscale_prior=args.use_lengthscale_prior
     )
 
 

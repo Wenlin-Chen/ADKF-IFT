@@ -52,6 +52,10 @@ class DKTModelTrainerConfig(DKTModelConfig):
     learning_rate: float = 0.001
     clip_value: Optional[float] = None
 
+    use_ard: bool = False
+    gp_kernel: str = "matern"
+    use_lengthscale_prior: bool = False
+
 
 def run_on_batches(
     model: DKTModel,
