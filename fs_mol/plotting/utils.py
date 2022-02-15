@@ -995,7 +995,7 @@ def plot_by_size(
 
     """
 
-    markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "^", ">", "<"]
+    markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "h", ">", "<"]
     color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal"]
 
     def get_style(cls, model_name):
@@ -1067,7 +1067,7 @@ def plot_by_size(
     ax.set_xlabel("$|\mathcal{T}_{u, support}|$")
     ax.set_xticks(TRAIN_SIZES_TO_COMPARE)
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE)
-    ax.set_ylim([0.00, 0.40])
+    ax.set_ylim([0.00, 0.50])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
 
     if plot_output_dir is not None:
