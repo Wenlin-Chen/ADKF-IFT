@@ -346,7 +346,7 @@ class ADKTModelTrainer(ADKTModel):
                 batch_loss = self.compute_loss(batch_logits, predictive=True)
                 batch_loss = batch_loss / self.config.tasks_per_batch
                 batch_loss.backward()
-                task_loss = batch_loss.detach() * self.config.tasks_per_batch
+                task_loss = batch_loss.detach() * self.config.tasks_per_batch / batches[0].query_labels.shape[0] #  report per-sample loss
                 task_loss = task_loss.cpu().item()
                 task_batch_losses.append(task_loss)
                 #task_batch_metrics.append(task_metrics)
