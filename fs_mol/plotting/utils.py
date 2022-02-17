@@ -995,8 +995,8 @@ def plot_by_size(
 
     """
 
-    markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "h", ">", "<"]
-    color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal"]
+    markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "h", ">", "<", "H"]
+    color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
 
     def get_style(cls, model_name):
         if cls == "all":
@@ -1039,7 +1039,7 @@ def plot_by_size(
         }
     )
 
-    fig, ax = plt.subplots(figsize=(15, 15))
+    fig, ax = plt.subplots(figsize=(15, 20))
 
     for j, model_name in enumerate(model_summaries.keys()):
 
@@ -1067,7 +1067,7 @@ def plot_by_size(
     ax.set_xlabel("$|\mathcal{T}_{u, support}|$")
     ax.set_xticks(TRAIN_SIZES_TO_COMPARE)
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE)
-    ax.set_ylim([0.00, 0.50])
+    ax.set_ylim([0.0, 0.40])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
 
     if plot_output_dir is not None:
