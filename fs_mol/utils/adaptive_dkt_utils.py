@@ -34,6 +34,9 @@ from fs_mol.utils.test_utils import eval_model, FSMolTaskSampleEvalResults
 
 from botorch.optim.fit import fit_gpytorch_scipy
 
+from fs_mol.utils.cauchy_hypergradient import cauchy_hypergradient
+from fs_mol.utils._stateless import functional_call
+
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +326,8 @@ class ADKTModelTrainer(ADKTModel):
             torch.set_grad_enabled(True)
             self.optimizer.zero_grad()
 
+            grad_accum = [0.0 for p in self.feature_extractor_params()]
+
             task_batch_losses: List[float] = []
             #task_batch_metrics: List[BinaryEvalMetrics] = []
             # find the best GP parameters given the current GNN parameters
@@ -342,15 +347,40 @@ class ADKTModelTrainer(ADKTModel):
                 # using the validation loss
                 assert len(batches) == 1
                 self.train()
-                batch_logits = self(batches[0], train_loss=False, predictive_val_loss=True)
-                batch_loss = self.compute_loss(batch_logits, predictive=True)
-                batch_loss = batch_loss / self.config.tasks_per_batch
-                batch_loss.backward()
-                task_loss = batch_loss.detach() * self.config.tasks_per_batch / batches[0].query_labels.shape[0] #  report per-sample loss
+
+                feature_extractor_params_names = [n for n, _ in self.named_parameters() if not n.startswith("gp_")]
+                gp_params_names = [n for n, _ in self.named_parameters() if n.startswith("gp_model.")]
+
+                def f_inner(params_outer, params_inner):
+                    feature_extractor_params_dict = {n: p for n, p in zip(feature_extractor_params_names, params_outer)}
+                    gp_params_dict = {n: p for n, p in zip(gp_params_names, params_inner)}
+                    likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
+                    self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
+                    batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": True, "is_functional_call": True})
+                    return batch_loss
+
+                def f_outer(params_outer, params_inner):
+                    feature_extractor_params_dict = {n: p for n, p in zip(feature_extractor_params_names, params_outer)}
+                    gp_params_dict = {n: p for n, p in zip(gp_params_names, params_inner)}
+                    likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
+                    self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
+                    batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": False, "predictive_val_loss": True, "is_functional_call": True})
+                    return batch_loss
+
+                batch_loss = cauchy_hypergradient(f_outer, f_inner, tuple(self.feature_extractor_params()), tuple(self.gp_params()), self.device)
+                task_loss = batch_loss / batches[0].query_labels.shape[0] #  report per-sample loss
                 task_loss = task_loss.cpu().item()
                 task_batch_losses.append(task_loss)
+
+                for i, param in enumerate(self.feature_extractor_params()):
+                    if param.grad is not None:
+                        grad_accum[i] += param.grad.data.clone() / self.config.tasks_per_batch
                 #task_batch_metrics.append(task_metrics)
 
+            for i, param in enumerate(self.feature_extractor_params()):
+                if isinstance(grad_accum[i], float):
+                    grad_accum[i] = None
+                param.grad = grad_accum[i]
             # Now do a training step - run_on_batches will have accumulated gradients
             if self.config.clip_value is not None:
                 torch.nn.utils.clip_grad_norm_(self.feature_extractor_params(), self.config.clip_value)

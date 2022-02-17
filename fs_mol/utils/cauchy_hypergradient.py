@@ -154,3 +154,6 @@ def cauchy_hypergradient(
         # Add the correction
         assert p_o.grad.shape == grad_correction.shape
         p_o.grad -= grad_correction  # NOTE: the minus sign
+    
+
+    return f_value

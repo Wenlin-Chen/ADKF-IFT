@@ -18,6 +18,8 @@ from gpytorch.distributions import MultivariateNormal
 
 from copy import deepcopy
 
+#from fs_mol.utils._stateless import functional_call
+
 FINGERPRINT_DIM = 2048
 PHYS_CHEM_DESCRIPTORS_DIM = 42
 
@@ -82,6 +84,13 @@ class ADKTModel(nn.Module):
                 fe_params.append(param)
         return fe_params
 
+    def gp_params(self):
+        gp_params = []
+        for name, param in self.named_parameters():
+            if name.startswith("gp_model."):
+                gp_params.append(param)
+        return gp_params
+
     def reinit_gp_params(self):
         self.gp_model.load_state_dict(self.cached_gp_model_state)
         self.gp_likelihood.load_state_dict(self.cached_gp_likelihood_state)
@@ -105,11 +114,17 @@ class ADKTModel(nn.Module):
     def device(self) -> torch.device:
         return next(self.parameters()).device
 
-    def forward(self, input_batch: DKTBatch, train_loss: bool, predictive_val_loss: bool=False):
+    def forward(self, input_batch: DKTBatch, train_loss: bool, predictive_val_loss: bool=False, is_functional_call: bool=False):
+                #feature_extractor_params_dict=None, gp_params_dict=None):
         support_features: List[torch.Tensor] = []
         query_features: List[torch.Tensor] = []
 
         if "gnn" in self.config.used_features:
+            #if feature_extractor_params_dict and gp_params_dict:
+            #    gnn_params_dict = {n: p for n, p in feature_extractor_params_dict.items() if n.startswith("graph_feature_extractor.")}
+            #    support_features.append(functional_call(self.graph_feature_extractor, gnn_params_dict, input_batch.support_features))
+            #    query_features.append(functional_call(self.graph_feature_extractor, gnn_params_dict, input_batch.query_features))
+            #else:
             support_features.append(self.graph_feature_extractor(input_batch.support_features))
             query_features.append(self.graph_feature_extractor(input_batch.query_features))
         if "ecfp" in self.config.used_features:
@@ -123,6 +138,11 @@ class ADKTModel(nn.Module):
         query_features_flat = torch.cat(query_features, dim=1)
 
         if self.use_fc:
+            #if feature_extractor_params_dict and gp_params_dict:
+            #    fc_params_dict = {n: p for n, p in feature_extractor_params_dict.items() if n.startswith("fc.")}
+            #    support_features_flat = functional_call(self.fc, fc_params_dict, support_features_flat)
+            #    query_features_flat = functional_call(self.fc, fc_params_dict, query_features_flat)
+            #else:
             support_features_flat = self.fc(support_features_flat)
             query_features_flat = self.fc(query_features_flat)
 
@@ -137,22 +157,49 @@ class ADKTModel(nn.Module):
         if self.training:
             assert train_loss is not None
             if train_loss: # compute train loss (on the support set)
-                self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
-                logits = None
+                #if feature_extractor_params_dict and gp_params_dict:
+                #    self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                #    logits = functional_call(self.gp_model, gp_params_dict, support_features_flat)
+                #else:
+                if is_functional_call: # return loss directly
+                    self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                    logits = self.gp_model(support_features_flat)
+                    logits = -self.mll(logits, self.gp_model.train_targets)
+                else:
+                    self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
+                    logits = None
             else: # compute val loss (on the query set)
                 if predictive_val_loss:
                     self.gp_model.eval()
                     with gpytorch.settings.detach_test_caches(False):
                         self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                        #if feature_extractor_params_dict and gp_params_dict:
+                        #    logits = functional_call(self.gp_model, gp_params_dict, query_features_flat)
+                        #else:
                         logits = self.gp_model(query_features_flat)
-                    self.predictive_targets = query_labels_converted
+                    if is_functional_call: # return loss directly
+                        self.gp_likelihood.eval()
+                        with gpytorch.settings.detach_test_caches(False):
+                            # return sum of the log predictive losses for all data points, which converges better than averaged loss
+                            logits = -self.gp_likelihood(logits).log_prob(query_labels_converted) #/ self.predictive_targets.shape[0]
+                        self.gp_model.train()
+                        self.gp_likelihood.train()
+                    else:
+                        self.predictive_targets = query_labels_converted
                 else:
                     self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
+                    #if feature_extractor_params_dict and gp_params_dict:
+                    #    logits = functional_call(self.gp_model, gp_params_dict, query_features_flat)
+                    #else:
                     logits = self.gp_model(query_features_flat)
+                    if is_functional_call: # return loss directly
+                        -self.mll(logits, self.gp_model.train_targets)
 
         # do GP posterior inference if the model is in the evaluation mode
         else:
             assert train_loss is None
+            #assert feature_extractor_params_dict is None
+            #assert gp_params_dict is None
             self.gp_model.train()
             self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
             self.gp_model.eval()
@@ -165,10 +212,12 @@ class ADKTModel(nn.Module):
     def compute_loss(self, logits: MultivariateNormal, predictive: bool=False) -> torch.Tensor:
         assert self.training == True
         if predictive:
+            self.gp_likelihood.eval()
             with gpytorch.settings.detach_test_caches(False):
                 # return sum of the log predictive losses for all data points, which converges better than averaged loss
                 predictive_loss = -self.gp_likelihood(logits).log_prob(self.predictive_targets) #/ self.predictive_targets.shape[0]
             self.gp_model.train()
+            self.gp_likelihood.train()
             return predictive_loss
         else:
             return -self.mll(logits, self.gp_model.train_targets)
