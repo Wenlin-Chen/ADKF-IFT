@@ -64,15 +64,14 @@ class ADKTModel(nn.Module):
                 nn.Linear(1024, self.config.graph_feature_extractor_config.readout_config.output_dim),
             )
 
-        kernel_type = self.config.gp_kernel
         if self.config.use_ard:
             ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
         else:
             ard_num_dims = None
-        self.__create_tail_GP(kernel_type=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=self.config.use_lengthscale_prior)
+        self.__create_tail_GP(kernel_type=self.config.gp_kernel, ard_num_dims=ard_num_dims)
         self.save_gp_states()
 
-        if kernel_type == "cossim":
+        if self.config.gp_kernel == "cossim":
             self.normalizing_features = True
         else:
             self.normalizing_features = False
@@ -91,24 +90,39 @@ class ADKTModel(nn.Module):
                 gp_params.append(param)
         return gp_params
 
-    def reinit_gp_params(self):
+    def reinit_gp_params(self, gp_input, use_lengthscale_prior=False):
         self.gp_model.load_state_dict(self.cached_gp_model_state)
         self.gp_likelihood.load_state_dict(self.cached_gp_likelihood_state)
+
+        median_lengthscale_init = self.compute_median_lengthscale_init(gp_input)
+        if use_lengthscale_prior:
+            scale = 0.25
+            loc = torch.log(median_lengthscale_init).item() + scale**2 # make sure that mode=median_lengthscale_init
+            lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+            self.gp_model.covar_module.base_kernel.register_prior(
+                "lengthscale_prior", lengthscale_prior, lambda m: m.lengthscale, lambda m, v: m._set_lengthscale(v)
+            )
+        self.gp_model.covar_module.base_kernel.lengthscale = torch.ones_like(self.gp_model.covar_module.base_kernel.lengthscale) * median_lengthscale_init
 
     def save_gp_states(self):
         self.cached_gp_model_state = deepcopy(self.gp_model.state_dict())
         self.cached_gp_likelihood_state = deepcopy(self.gp_likelihood.state_dict())
 
-    def __create_tail_GP(self, kernel_type, ard_num_dims=None, use_lengthscale_prior=False):
+    def __create_tail_GP(self, kernel_type, ard_num_dims=None):
         dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
         dummy_train_y = torch.ones(64)
 
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
         self.gp_model = ExactGPLayer(
             train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
-            kernel=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=use_lengthscale_prior
+            kernel=kernel_type, ard_num_dims=ard_num_dims
         )
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model)
+
+    def compute_median_lengthscale_init(self, gp_input):
+        dist_squared = torch.cdist(gp_input, gp_input) ** 2
+        dist_squared = torch.triu(dist_squared, diagonal=1)
+        return torch.sqrt(0.5 * torch.median(dist_squared[dist_squared>0.0]))
 
     @property
     def device(self) -> torch.device:
@@ -166,6 +180,7 @@ class ADKTModel(nn.Module):
                     logits = self.gp_model(support_features_flat)
                     logits = -self.mll(logits, self.gp_model.train_targets)
                 else:
+                    self.reinit_gp_params(support_features_flat.detach(), self.config.use_lengthscale_prior)
                     self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
                     logits = None
             else: # compute val loss (on the query set)
@@ -200,9 +215,9 @@ class ADKTModel(nn.Module):
             assert train_loss is None
             #assert feature_extractor_params_dict is None
             #assert gp_params_dict is None
-            self.gp_model.train()
+            #self.gp_model.train()
             self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-            self.gp_model.eval()
+            #self.gp_model.eval()
 
             with torch.no_grad():
                 logits = self.gp_likelihood(self.gp_model(query_features_flat))

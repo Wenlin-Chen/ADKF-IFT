@@ -9,7 +9,7 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         covar_module.raw_outputscale
         covar_module.base_kernel.raw_lengthscale
     '''
-    def __init__(self, train_x, train_y, likelihood, kernel, ard_num_dims=None, use_lengthscale_prior=False):
+    def __init__(self, train_x, train_y, likelihood, kernel, ard_num_dims=None):
         #Set the likelihood noise and enable/disable learning
         likelihood.noise_covar.raw_noise.requires_grad = False
         likelihood.noise_covar.noise = torch.tensor(0.1)
@@ -17,24 +17,15 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         #self.mean_module = gpytorch.means.ConstantMean()
         self.mean_module = gpytorch.means.ZeroMean()
 
-        if use_lengthscale_prior:
-            lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=0.0, scale=0.25)
-        else:
-            lengthscale_prior = None
-
         ## Linear kernel
         if kernel=='linear':
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.LinearKernel())
         ## RBF kernel
         elif kernel=='rbf' or kernel=='RBF':
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=ard_num_dims, lengthscale_prior=lengthscale_prior))
-            if use_lengthscale_prior:
-                self.covar_module.base_kernel.lengthscale = torch.ones_like(self.covar_module.base_kernel.lengthscale) * lengthscale_prior.mean
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel(ard_num_dims=ard_num_dims))
         ## Matern kernel (52)
         elif kernel=='matern':
-            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(ard_num_dims=ard_num_dims, lengthscale_prior=lengthscale_prior))
-            if use_lengthscale_prior:
-                self.covar_module.base_kernel.lengthscale = torch.ones_like(self.covar_module.base_kernel.lengthscale) * lengthscale_prior.mean
+            self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(ard_num_dims=ard_num_dims))
         ## Polynomial (p=1)
         elif kernel=='poli1':
             self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.PolynomialKernel(power=1))

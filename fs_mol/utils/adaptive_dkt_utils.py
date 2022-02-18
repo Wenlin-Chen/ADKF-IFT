@@ -81,7 +81,7 @@ def run_on_batches(
     for batch_features, batch_labels in zip(batches, batch_labels):
         # Compute task loss
         model.train()
-        model.reinit_gp_params()
+        #model.reinit_gp_params()
         _ = model(batch_features, train_loss=True)
         fit_gpytorch_scipy(model.mll)
 
@@ -367,19 +367,16 @@ class ADKTModelTrainer(ADKTModel):
                     batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": False, "predictive_val_loss": True, "is_functional_call": True})
                     return batch_loss
 
-                batch_loss = cauchy_hypergradient(f_outer, f_inner, tuple(self.feature_extractor_params()), tuple(self.gp_params()), self.device)
+                batch_loss = cauchy_hypergradient(f_outer, f_inner, tuple(self.feature_extractor_params()), tuple(self.gp_params()), self.device, ignore_grad_correction=False)
                 task_loss = batch_loss / batches[0].query_labels.shape[0] #  report per-sample loss
                 task_loss = task_loss.cpu().item()
                 task_batch_losses.append(task_loss)
 
                 for i, param in enumerate(self.feature_extractor_params()):
-                    if param.grad is not None:
-                        grad_accum[i] += param.grad.data.clone() / self.config.tasks_per_batch
+                    grad_accum[i] += param.grad.data.clone() / self.config.tasks_per_batch
                 #task_batch_metrics.append(task_metrics)
 
             for i, param in enumerate(self.feature_extractor_params()):
-                if isinstance(grad_accum[i], float):
-                    grad_accum[i] = None
                 param.grad = grad_accum[i]
             # Now do a training step - run_on_batches will have accumulated gradients
             if self.config.clip_value is not None:
