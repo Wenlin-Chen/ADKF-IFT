@@ -79,8 +79,18 @@ class DKTModel(nn.Module):
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
         self.gp_model = ExactGPLayer(
             train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
-            kernel=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=use_lengthscale_prior
+            kernel=kernel_type, ard_num_dims=ard_num_dims
         )
+
+        if use_lengthscale_prior:
+            scale = 0.25
+            loc = 0.0
+            lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+            self.gp_model.covar_module.base_kernel.register_prior(
+                "lengthscale_prior", lengthscale_prior, lambda m: m.lengthscale, lambda m, v: m._set_lengthscale(v)
+            )
+            self.gp_model.covar_module.base_kernel.lengthscale = torch.ones_like(self.gp_model.covar_module.base_kernel.lengthscale) * lengthscale_prior.mean
+
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model)
 
     @property
