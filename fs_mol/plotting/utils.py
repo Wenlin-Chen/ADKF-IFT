@@ -883,7 +883,7 @@ def make_box_plot(
 
     if plot_output_dir is not None:
         plt.savefig(
-            os.path.join(plot_output_dir, f"comparison_boxplot_{support_set_size}_hc_{hc}.png"),
+            os.path.join(plot_output_dir, f"comparison_boxplot_{support_set_size}_hc_{hc}.pdf"),
             bbox_inches="tight",
         )
 
@@ -1064,7 +1064,7 @@ def plot_by_size(
 
     ax.legend(loc="upper left", ncol=2)
     ax.set_ylabel("$\Delta$ AUPRC")
-    ax.set_xlabel("$|\mathcal{T}_{u, support}|$")
+    ax.set_xlabel("$N_{\mathcal{S}_{*}}=|\mathcal{S}_{*}|$")
     ax.set_xticks(TRAIN_SIZES_TO_COMPARE)
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE)
     ax.set_ylim([0.0, 0.40])
@@ -1072,7 +1072,7 @@ def plot_by_size(
 
     if plot_output_dir is not None:
         plt.savefig(
-            os.path.join(plot_output_dir, f"comparison_plot_hc_{highlight_class}.png"),
+            os.path.join(plot_output_dir, f"comparison_plot_hc_{highlight_class}.pdf"),
             bbox_inches="tight",
         )
 
@@ -1085,3 +1085,25 @@ def plot_by_size(
 
     plt.show(fig)
     plt.close(fig)
+
+
+def walltime_plot(walltime_list, method_name_list, plot_output_dir):
+    assert len(walltime_list) == len(method_name_list)
+
+    walltime_np = [np.array(walltime) for walltime in walltime_list]
+    walltime_mean = [np.mean(walltime) for walltime in walltime_np]
+    walltime_std = [np.std(walltime) for walltime in walltime_np]
+    x_pos = list(range(len(walltime_list)))
+
+    fig = plt.figure(figsize=(10, 8))
+    plt.bar(x_pos, walltime_mean,
+            yerr=walltime_std,
+            alpha=0.5, ecolor='black', capsize=12
+        )
+    plt.xticks(x_pos, method_name_list, size=12)
+    plt.yticks(size=13)
+    plt.ylabel('Wall-clock time (seconds)', size=15)
+    plt.title('Wall-clock Time of Test Time Adaptation', size=20)
+    plt.grid()
+    fig.tight_layout()
+    fig.savefig(os.path.join(plot_output_dir, "adaptation_walltime.pdf"), bbox_inches="tight")

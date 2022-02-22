@@ -88,6 +88,37 @@ def add_eval_cli_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_walltime_cli_args(parser: argparse.ArgumentParser) -> None:
+    add_data_cli_args(parser)
+
+    parser.add_argument(
+        "--save-dir",
+        type=str,
+        default="outputs",
+        help="Path in which to store the test results and log of their computation.",
+    )
+
+    parser.add_argument(
+        "--num-runs", type=int, default=1, help="Number of runs with different data splits to do."
+    )
+
+    parser.add_argument("--seed", type=int, default=0, help="Random seed to use.")
+
+    parser.add_argument(
+        "--train-sizes",
+        type=json.loads,
+        default=[64],
+        help="JSON list of number of training points to sample.",
+    )
+
+    parser.add_argument(
+        "--test-size",
+        type=int,
+        default=None,
+        help="Number of test samples to take.",
+    )
+
+
 def set_up_dataset(args: argparse.Namespace, **kwargs):
     # Handle the different task entry methods.
     # Permit a directory or a list of files
