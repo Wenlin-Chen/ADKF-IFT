@@ -81,7 +81,6 @@ def run_on_batches(
     for batch_features, batch_labels in zip(batches, batch_labels):
         # Compute task loss
         model.train()
-        #model.reinit_gp_params()
         _ = model(batch_features, train_loss=True)
         fit_gpytorch_scipy(model.mll)
 

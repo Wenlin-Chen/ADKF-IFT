@@ -64,12 +64,8 @@ class ADKTModel(nn.Module):
                 nn.Linear(1024, self.config.graph_feature_extractor_config.readout_config.output_dim),
             )
 
-        if self.config.use_ard:
-            ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
-        else:
-            ard_num_dims = None
-        self.__create_tail_GP(kernel_type=self.config.gp_kernel, ard_num_dims=ard_num_dims)
-        self.save_gp_states()
+        self.__create_tail_GP(kernel_type=self.config.gp_kernel)
+        #self.save_gp_states()
 
         if self.config.gp_kernel == "cossim":
             self.normalizing_features = True
@@ -91,8 +87,10 @@ class ADKTModel(nn.Module):
         return gp_params
 
     def reinit_gp_params(self, gp_input, use_lengthscale_prior=False):
-        self.gp_model.load_state_dict(self.cached_gp_model_state)
-        self.gp_likelihood.load_state_dict(self.cached_gp_likelihood_state)
+        #self.gp_model.load_state_dict(self.cached_gp_model_state)
+        #self.gp_likelihood.load_state_dict(self.cached_gp_likelihood_state)
+
+        self.__create_tail_GP(kernel_type=self.config.gp_kernel)
 
         median_lengthscale_init = self.compute_median_lengthscale_init(gp_input)
         if use_lengthscale_prior:
@@ -104,20 +102,21 @@ class ADKTModel(nn.Module):
             )
         self.gp_model.covar_module.base_kernel.lengthscale = torch.ones_like(self.gp_model.covar_module.base_kernel.lengthscale) * median_lengthscale_init
 
-    def save_gp_states(self):
-        self.cached_gp_model_state = deepcopy(self.gp_model.state_dict())
-        self.cached_gp_likelihood_state = deepcopy(self.gp_likelihood.state_dict())
-
-    def __create_tail_GP(self, kernel_type, ard_num_dims=None):
+    def __create_tail_GP(self, kernel_type):
         dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
         dummy_train_y = torch.ones(64)
 
-        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        if self.config.use_ard:
+            ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
+        else:
+            ard_num_dims = None
+
+        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood().to(self.device)
         self.gp_model = ExactGPLayer(
             train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
             kernel=kernel_type, ard_num_dims=ard_num_dims
-        )
-        self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model)
+        ).to(self.device)
+        self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model).to(self.device)
 
     def compute_median_lengthscale_init(self, gp_input):
         dist_squared = torch.cdist(gp_input, gp_input) ** 2
@@ -129,16 +128,10 @@ class ADKTModel(nn.Module):
         return next(self.parameters()).device
 
     def forward(self, input_batch: DKTBatch, train_loss: bool, predictive_val_loss: bool=False, is_functional_call: bool=False):
-                #feature_extractor_params_dict=None, gp_params_dict=None):
         support_features: List[torch.Tensor] = []
         query_features: List[torch.Tensor] = []
 
         if "gnn" in self.config.used_features:
-            #if feature_extractor_params_dict and gp_params_dict:
-            #    gnn_params_dict = {n: p for n, p in feature_extractor_params_dict.items() if n.startswith("graph_feature_extractor.")}
-            #    support_features.append(functional_call(self.graph_feature_extractor, gnn_params_dict, input_batch.support_features))
-            #    query_features.append(functional_call(self.graph_feature_extractor, gnn_params_dict, input_batch.query_features))
-            #else:
             support_features.append(self.graph_feature_extractor(input_batch.support_features))
             query_features.append(self.graph_feature_extractor(input_batch.query_features))
         if "ecfp" in self.config.used_features:
@@ -152,11 +145,6 @@ class ADKTModel(nn.Module):
         query_features_flat = torch.cat(query_features, dim=1)
 
         if self.use_fc:
-            #if feature_extractor_params_dict and gp_params_dict:
-            #    fc_params_dict = {n: p for n, p in feature_extractor_params_dict.items() if n.startswith("fc.")}
-            #    support_features_flat = functional_call(self.fc, fc_params_dict, support_features_flat)
-            #    query_features_flat = functional_call(self.fc, fc_params_dict, query_features_flat)
-            #else:
             support_features_flat = self.fc(support_features_flat)
             query_features_flat = self.fc(query_features_flat)
 
@@ -171,10 +159,6 @@ class ADKTModel(nn.Module):
         if self.training:
             assert train_loss is not None
             if train_loss: # compute train loss (on the support set)
-                #if feature_extractor_params_dict and gp_params_dict:
-                #    self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-                #    logits = functional_call(self.gp_model, gp_params_dict, support_features_flat)
-                #else:
                 if is_functional_call: # return loss directly
                     self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
                     logits = self.gp_model(support_features_flat)
@@ -188,9 +172,6 @@ class ADKTModel(nn.Module):
                     self.gp_model.eval()
                     with gpytorch.settings.detach_test_caches(False):
                         self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-                        #if feature_extractor_params_dict and gp_params_dict:
-                        #    logits = functional_call(self.gp_model, gp_params_dict, query_features_flat)
-                        #else:
                         logits = self.gp_model(query_features_flat)
                     if is_functional_call: # return loss directly
                         self.gp_likelihood.eval()
@@ -203,9 +184,6 @@ class ADKTModel(nn.Module):
                         self.predictive_targets = query_labels_converted
                 else:
                     self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
-                    #if feature_extractor_params_dict and gp_params_dict:
-                    #    logits = functional_call(self.gp_model, gp_params_dict, query_features_flat)
-                    #else:
                     logits = self.gp_model(query_features_flat)
                     if is_functional_call: # return loss directly
                         -self.mll(logits, self.gp_model.train_targets)
@@ -213,11 +191,7 @@ class ADKTModel(nn.Module):
         # do GP posterior inference if the model is in the evaluation mode
         else:
             assert train_loss is None
-            #assert feature_extractor_params_dict is None
-            #assert gp_params_dict is None
-            #self.gp_model.train()
             self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-            #self.gp_model.eval()
 
             with torch.no_grad():
                 logits = self.gp_likelihood(self.gp_model(query_features_flat))
