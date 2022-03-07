@@ -11,10 +11,12 @@ from fs_mol.modules.graph_feature_extractor import (
 )
 from fs_mol.data.dkt import DKTBatch
 
-from fs_mol.utils.gp_utils import ExactGPLayer
+from fs_mol.utils.gp_utils import VariationalGPLayer, ExactGPLayer
 
 import gpytorch
 from gpytorch.distributions import MultivariateNormal
+
+from botorch.optim.fit import fit_gpytorch_scipy
 
 #from fs_mol.utils._stateless import functional_call
 
@@ -23,7 +25,7 @@ PHYS_CHEM_DESCRIPTORS_DIM = 42
 
 
 @dataclass(frozen=True)
-class ADKTModelConfig:
+class ADKTVGPModelConfig:
     # Model configuration:
     graph_feature_extractor_config: GraphFeatureExtractorConfig = GraphFeatureExtractorConfig()
     used_features: Literal[
@@ -32,8 +34,8 @@ class ADKTModelConfig:
     #distance_metric: Literal["mahalanobis", "euclidean"] = "mahalanobis"
 
 
-class ADKTModel(nn.Module):
-    def __init__(self, config: ADKTModelConfig):
+class ADKTVGPModel(nn.Module):
+    def __init__(self, config: ADKTVGPModelConfig):
         super().__init__()
         self.config = config
 
@@ -62,7 +64,9 @@ class ADKTModel(nn.Module):
                 nn.Linear(1024, self.config.graph_feature_extractor_config.readout_config.output_dim),
             )
 
-        self.__create_tail_GP(kernel_type=self.config.gp_kernel)
+        dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
+        dummy_train_y = torch.ones(64)
+        self.__create_tail_GP(train_x=dummy_train_x, train_y=dummy_train_y, kernel_type=self.config.gp_kernel)
 
         if self.config.gp_kernel == "cossim":
             self.normalizing_features = True
@@ -83,22 +87,41 @@ class ADKTModel(nn.Module):
                 gp_params.append(param)
         return gp_params
 
-    def reinit_gp_params(self, gp_input, use_lengthscale_prior=False):
+    def reinit_gp_params(self, train_x, train_y, use_lengthscale_prior=False):
 
-        self.__create_tail_GP(kernel_type=self.config.gp_kernel)
+        train_y_regression = self.__convert_bool_labels_for_regression(train_y)
+        exact_gp_model, exact_gp_likelihood, exact_mll = self.__create_exact_GP_for_init(kernel_type=self.config.gp_kernel)
 
         if self.config.gp_kernel == 'matern' or self.config.gp_kernel == 'rbf' or self.config.gp_kernel == 'RBF':
-            median_lengthscale_init = self.compute_median_lengthscale_init(gp_input)
+            median_lengthscale_init = self.compute_median_lengthscale_init(train_x)
             if use_lengthscale_prior:
                 scale = 0.25
                 loc = torch.log(median_lengthscale_init).item() + scale**2 # make sure that mode=median_lengthscale_init
                 lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+                exact_gp_model.covar_module.base_kernel.register_prior(
+                    "lengthscale_prior", lengthscale_prior, lambda m: m.lengthscale, lambda m, v: m._set_lengthscale(v)
+                )
+            exact_gp_model.covar_module.base_kernel.lengthscale = torch.ones_like(exact_gp_model.covar_module.base_kernel.lengthscale) * median_lengthscale_init
+        
+        exact_gp_model.set_train_data(inputs=train_x.detach(), targets=train_y_regression.detach(), strict=False)
+        fit_gpytorch_scipy(exact_mll)
+
+        self.__create_tail_GP(train_x=train_x, train_y=train_y, kernel_type=self.config.gp_kernel)
+
+        if self.config.gp_kernel == 'matern' or self.config.gp_kernel == 'rbf' or self.config.gp_kernel == 'RBF':
+            lengthscale_init = exact_gp_model.covar_module.base_kernel.lengthscale
+            if use_lengthscale_prior:
+                scale = 0.2
+                loc = torch.log(lengthscale_init).item() + scale**2 # make sure that mode=lengthscale_init
+                lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
                 self.gp_model.covar_module.base_kernel.register_prior(
                     "lengthscale_prior", lengthscale_prior, lambda m: m.lengthscale, lambda m, v: m._set_lengthscale(v)
                 )
-            self.gp_model.covar_module.base_kernel.lengthscale = torch.ones_like(self.gp_model.covar_module.base_kernel.lengthscale) * median_lengthscale_init
+            self.gp_model.covar_module.base_kernel.lengthscale = torch.ones_like(self.gp_model.covar_module.base_kernel.lengthscale) * lengthscale_init
 
-    def __create_tail_GP(self, kernel_type):
+        self.gp_model.covar_module.outputscale = exact_gp_model.covar_module.outputscale
+
+    def __create_exact_GP_for_init(self, kernel_type):
         dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
         dummy_train_y = torch.ones(64)
 
@@ -107,12 +130,26 @@ class ADKTModel(nn.Module):
         else:
             ard_num_dims = None
 
-        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood().to(self.device)
-        self.gp_model = ExactGPLayer(
-            train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
+        exact_gp_likelihood = gpytorch.likelihoods.GaussianLikelihood().to(self.device)
+        exact_gp_model = ExactGPLayer(
+            train_x=dummy_train_x, train_y=dummy_train_y, likelihood=exact_gp_likelihood, 
             kernel=kernel_type, ard_num_dims=ard_num_dims
         ).to(self.device)
-        self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model).to(self.device)
+        exact_mll = gpytorch.mlls.ExactMarginalLogLikelihood(exact_gp_likelihood, exact_gp_model).to(self.device)
+
+        return exact_gp_model, exact_gp_likelihood, exact_mll
+
+    def __create_tail_GP(self, train_x, train_y, kernel_type):
+        if self.config.use_ard:
+            ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
+        else:
+            ard_num_dims = None
+
+        self.gp_likelihood = gpytorch.likelihoods.BernoulliLikelihood().to(self.device)
+        self.gp_model = VariationalGPLayer(
+            train_x=train_x, train_y=train_y, kernel=kernel_type, ard_num_dims=ard_num_dims
+        ).to(self.device)
+        self.mll = gpytorch.mlls.VariationalELBO(self.gp_likelihood, self.gp_model, train_y.numel()).to(self.device)
 
     def compute_median_lengthscale_init(self, gp_input):
         dist_squared = torch.cdist(gp_input, gp_input) ** 2
@@ -156,28 +193,26 @@ class ADKTModel(nn.Module):
             assert train_loss is not None
             if train_loss: # compute train loss (on the support set)
                 if is_functional_call: # return loss directly
-                    self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                    #self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
                     logits = self.gp_model(support_features_flat)
-                    logits = -self.mll(logits, self.gp_model.train_targets)
+                    logits = -self.mll(logits, self.support_labels_converted)
                 else:
-                    self.reinit_gp_params(support_features_flat.detach(), self.config.use_lengthscale_prior)
+                    self.reinit_gp_params(support_features_flat.detach(), support_labels_converted.detach(), self.config.use_lengthscale_prior)
                     self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
-                    logits = None
+                    with torch.no_grad():
+                        logits = self.gp_model(support_features_flat.detach()) # I don't know why, but this is a necessary step before calling fit_gpytorch_scipy when using VariationalELBO
             else: # compute val loss (on the query set)
                 assert is_functional_call == True
-                if predictive_val_loss:
-                    self.gp_model.eval()
-                    self.gp_likelihood.eval()
-                    with gpytorch.settings.detach_test_caches(False):
-                        self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-                        # return sum of the log predictive losses for all data points, which converges better than averaged loss
-                        logits = -self.gp_likelihood(self.gp_model(query_features_flat)).log_prob(query_labels_converted) #/ self.predictive_targets.shape[0]
-                    self.gp_model.train()
-                    self.gp_likelihood.train()
-                else:
-                    self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
-                    logits = self.gp_model(query_features_flat)
-                    logits = -self.mll(logits, self.gp_model.train_targets)
+                assert predictive_val_loss == True
+                self.gp_model.eval()
+                self.gp_likelihood.eval()
+                with gpytorch.settings.detach_test_caches(False):
+                    #self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                    self.gp_model.variational_strategy.register_buffer("inducing_points", support_features_flat) # backprop through the support points
+                    # return sum of the log predictive losses for all data points, which converges better than averaged loss
+                    logits = -self.gp_likelihood(self.gp_model(query_features_flat)).log_prob(query_labels_converted).sum() #/ query_features_flat.shape[0]
+                self.gp_model.train()
+                self.gp_likelihood.train()
 
         # do GP posterior inference if the model is in the evaluation mode
         else:
@@ -190,5 +225,9 @@ class ADKTModel(nn.Module):
         return logits
 
     def __convert_bool_labels(self, labels):
+        # True -> 1.0; False -> 0.0
+        return labels.float()
+
+    def __convert_bool_labels_for_regression(self, labels):
         # True -> 1.0; False -> -1.0
         return (labels.float() - 0.5) * 2.0
