@@ -119,6 +119,11 @@ def parse_command_line():
         action="store_false",
         help="Put a logNormal prior over the lengthscale(s).",
     )
+    parser.add_argument(
+        "--use-numeric-labels",
+        action="store_true",
+        help="Perform regression for the numeric labels (log concentration). Default: perform binary classification for the bool labels (active/inactive).",
+    )
     args = parser.parse_args()
     return args
 
@@ -127,7 +132,6 @@ def make_trainer_config(args: argparse.Namespace) -> ADKTModelTrainerConfig:
     return ADKTModelTrainerConfig(
         graph_feature_extractor_config=make_graph_feature_extractor_config_from_args(args),
         used_features=args.features,
-        #distance_metric=args.distance_metric,
         batch_size=args.batch_size,
         tasks_per_batch=args.tasks_per_batch,
         support_set_size=args.support_set_size,
@@ -141,7 +145,8 @@ def make_trainer_config(args: argparse.Namespace) -> ADKTModelTrainerConfig:
         clip_value=args.clip_value,
         use_ard=args.use_ard,
         gp_kernel=args.gp_kernel,
-        use_lengthscale_prior=args.use_lengthscale_prior
+        use_lengthscale_prior=args.use_lengthscale_prior,
+        use_numeric_labels=args.use_numeric_labels,
     )
 
 

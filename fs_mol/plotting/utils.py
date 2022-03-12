@@ -498,23 +498,34 @@ def load_model_results(
 
 
 def merge_loaded_dfs(
-    df_list: List[pd.DataFrame],
+    df_list: List[pd.DataFrame], numeric: bool = False
 ) -> pd.DataFrame:
     merged_df = df_list[0]
-    for df in df_list[1:]:
-        merged_df = merged_df.merge(
-            df, how="outer", on=["TASK_ID", "fraction_positive_train", "fraction_positive_test"]
-        )
+    if numeric:
+        for df in df_list[1:]:
+            merged_df = merged_df.merge(
+                df, how="outer", on=["TASK_ID"]
+            )
+    else:
+        for df in df_list[1:]:
+            merged_df = merged_df.merge(
+                df, how="outer", on=["TASK_ID", "fraction_positive_train", "fraction_positive_test"]
+            )
+    
+    if numeric:
+        frac_cols = []
+    else:
+        # Average out the columns on fractions of positives, which may have minor differences between runs due
+        # to small differences in (stratified) sampling in some corner cases:
+        frac_cols = ["fraction_positive_train", "fraction_positive_test"]
 
-    # Average out the columns on fractions of positives, which may have minor differences between runs due
-    # to small differences in (stratified) sampling in some corner cases:
-    frac_cols = ["fraction_positive_train", "fraction_positive_test"]
     merged_df_without_fracs = (
         merged_df.drop(columns=frac_cols)
         .groupby("TASK_ID")
         .agg(lambda x: np.nan if x.isnull().all() else x.dropna())
         .reset_index()
     )
+        
     merge_on = ["TASK_ID"]
     if "EC_super_class" in merged_df.columns:
         merge_on.append("EC_super_class")
@@ -537,7 +548,7 @@ def merge_loaded_dfs(
 
 
 def load_data(
-    model_summaries: Dict[str, str], train_sizes: List[int] = TRAIN_SIZES_TO_COMPARE
+    model_summaries: Dict[str, str], train_sizes: List[int] = TRAIN_SIZES_TO_COMPARE, numeric: bool = False
 ) -> pd.DataFrame:
 
     # load all the data in to a list
@@ -546,7 +557,7 @@ def load_data(
         print(f"Loading data for {model_name} from {model_summary_path}.")
         df_list.append(load_model_results(model_summary_path, model_name, train_sizes))
 
-    merged_df = merge_loaded_dfs(df_list)
+    merged_df = merge_loaded_dfs(df_list, numeric=numeric)
 
     return merged_df
 
@@ -554,6 +565,7 @@ def load_data(
 def expand_values(
     df: pd.DataFrame,
     model_summaries: Dict[str, str],
+    numeric: bool = False
 ) -> pd.DataFrame:
 
     all_df = df.copy()
@@ -571,8 +583,17 @@ def expand_values(
                 ),
                 axis=1,
             )
-
-    return calculate_delta_auprc(all_df, model_summaries)
+    if numeric:
+        extend_df = all_df.copy()
+        for num_samples in TRAIN_SIZES_TO_COMPARE:
+            for model_name in model_summaries.keys():
+                extend_df[f"{num_samples}_train ({model_name}) val r2"] = extend_df.apply(
+                    lambda row: row[f"{num_samples}_train ({model_name}) val"],
+                    axis=1,
+                )
+        return extend_df
+    else:
+        return calculate_delta_auprc(all_df, model_summaries)
 
 
 def plot_task_performances_by_id(
@@ -687,9 +708,11 @@ def aggregate_by_class(
     model_summaries: Dict[str, str],
     classes: List[int] = [1, 2, 3, 4, 5, 6, 7],
     num_samples: int = 16,
+    numeric: bool = False
 ) -> pd.DataFrame:
 
-    frac_positives = ecmerged["fraction_positive_train"]
+    if not numeric:
+        frac_positives = ecmerged["fraction_positive_train"]
     aggregation = None
     for highlight_class in classes:
 
@@ -698,11 +721,15 @@ def aggregate_by_class(
         aggerrors = pd.DataFrame()
 
         for model_name in model_summaries.keys():
-
-            aggresults[f"{num_samples}_train ({model_name})"] = (
-                ecmerged.iloc[hdf][f"{num_samples}_train ({model_name}) val"]
-                - frac_positives.iloc[hdf]
-            )
+            if numeric:
+                aggresults[f"{num_samples}_train ({model_name})"] = (
+                    ecmerged.iloc[hdf][f"{num_samples}_train ({model_name}) val"]
+                )
+            else:
+                aggresults[f"{num_samples}_train ({model_name})"] = (
+                    ecmerged.iloc[hdf][f"{num_samples}_train ({model_name}) val"]
+                    - frac_positives.iloc[hdf]
+                )
             # store to allow error propagation if only one measurement in category
             aggerrors[f"{num_samples}_train ({model_name}) std"] = ecmerged.iloc[hdf][
                 f"{num_samples}_train ({model_name}) std"
@@ -777,10 +804,14 @@ def aggregate_by_class(
     aggerrors = pd.DataFrame()
     highlight_class = "all"
     for model_name in model_summaries.keys():
-
-        aggresults[f"{num_samples}_train ({model_name})"] = (
-            ecmerged[f"{num_samples}_train ({model_name}) val"] - frac_positives.iloc[hdf]
-        )
+        if numeric:
+            aggresults[f"{num_samples}_train ({model_name})"] = (
+                ecmerged[f"{num_samples}_train ({model_name}) val"]
+            )
+        else:
+            aggresults[f"{num_samples}_train ({model_name})"] = (
+                ecmerged[f"{num_samples}_train ({model_name}) val"] - frac_positives.iloc[hdf]
+            )
         aggerrors[f"{num_samples}_train ({model_name}) std"] = ecmerged.iloc[hdf][
             f"{num_samples}_train ({model_name}) std"
         ]
@@ -828,6 +859,7 @@ def make_box_plot(
     support_set_size,
     plot_output_dir: Optional[str] = None,
     highlight_class: Optional[int] = None,
+    numeric: bool = False
 ) -> None:
 
     light_color = plt.get_cmap("plasma").colors[170]
@@ -859,7 +891,10 @@ def make_box_plot(
         figsize=(10, 10),
     )
     bp_dict.ax.set_yticklabels(model_names, fontsize=22)
-    bp_dict.ax.set_xlabel("$\Delta$ AUPRC")
+    if numeric:
+        bp_dict.ax.set_xlabel("$R_{os}^2$")
+    else:
+        bp_dict.ax.set_xlabel("$\Delta$AUPRC")
     bp_dict.ax.tick_params(axis="x", labelsize=22)
 
     # for row_key, (ax,row) in bp_dict.iteritems():
@@ -896,12 +931,16 @@ def box_plot(
     support_set_size: int = 16,
     plot_output_dir: Optional[str] = None,
     highlight_class: Optional[int] = None,
+    numeric: bool = False
 ) -> None:
 
     model_cols = []
     model_names = []
     for model_name in model_summaries.keys():
-        model_cols.append(f"{support_set_size}_train ({model_name}) val delta-auprc")
+        if numeric:
+            model_cols.append(f"{support_set_size}_train ({model_name}) val r2")
+        else:
+            model_cols.append(f"{support_set_size}_train ({model_name}) val delta-auprc")
         model_names.append(f"{model_name}")
 
     if highlight_class is not None:
@@ -913,16 +952,18 @@ def box_plot(
             support_set_size,
             plot_output_dir=plot_output_dir,
             highlight_class=highlight_class,
+            numeric=numeric
         )
 
     make_box_plot(
-        extend_df, model_cols, model_names, support_set_size, plot_output_dir=plot_output_dir
+        extend_df, model_cols, model_names, support_set_size, plot_output_dir=plot_output_dir, numeric=numeric
     )
 
 
 def get_aggregates_across_sizes(
     df: pd.DataFrame,
     model_summaries: Dict[str, str],
+    numeric: bool = False
 ) -> pd.DataFrame:
 
     full_df = None
@@ -930,7 +971,7 @@ def get_aggregates_across_sizes(
     for train_size in TRAIN_SIZES_TO_COMPARE:
 
         aggregation = aggregate_by_class(
-            df, model_summaries, classes=list(df.EC_super_class.unique()), num_samples=train_size
+            df, model_summaries, classes=list(df.EC_super_class.unique()), num_samples=train_size, numeric=numeric
         )
 
         if full_df is None:
@@ -981,6 +1022,7 @@ def plot_by_size(
     plot_all_classes: bool = False,
     highlight_class: Optional[int] = None,
     plot_output_dir: Optional[str] = None,
+    numeric: bool = False
 ):
     """
     Plotting function to create the aggregation-by-support-set-size plot.
@@ -1014,7 +1056,7 @@ def plot_by_size(
 
     # pull all values out of the aggregate df
     vals, stds = collect_model_results(df, model_summaries)
-    categories = {x: i for i, x in enumerate(vals["GNN-MAML"].index)}
+    categories = {x: i for i, x in enumerate(vals["ADKT"].index)}
     if highlight_class is not None:
         assert (
             str(highlight_class) in categories.keys()
@@ -1039,7 +1081,7 @@ def plot_by_size(
         }
     )
 
-    fig, ax = plt.subplots(figsize=(15, 20))
+    fig, ax = plt.subplots(figsize=(15, 15))
 
     for j, model_name in enumerate(model_summaries.keys()):
 
@@ -1063,11 +1105,17 @@ def plot_by_size(
             )
 
     ax.legend(loc="upper left", ncol=2)
-    ax.set_ylabel("$\Delta$ AUPRC")
+    if numeric:
+        ax.set_ylabel("$R_{os}^2$")
+    else:
+        ax.set_ylabel("$\Delta$AUPRC")
     ax.set_xlabel("$N_{\mathcal{S}_{*}}=|\mathcal{S}_{*}|$")
     ax.set_xticks(TRAIN_SIZES_TO_COMPARE)
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE)
-    ax.set_ylim([0.0, 0.40])
+    if numeric:
+        ax.set_ylim([0.0, 0.50])
+    else:
+        ax.set_ylim([0.0, 0.40])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
 
     if plot_output_dir is not None:
@@ -1095,15 +1143,18 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir):
     walltime_std = [np.std(walltime) for walltime in walltime_np]
     x_pos = list(range(len(walltime_list)))
 
-    fig = plt.figure(figsize=(10, 8))
-    plt.bar(x_pos, walltime_mean,
-            yerr=walltime_std,
-            alpha=0.5, ecolor='black', capsize=12
-        )
-    plt.xticks(x_pos, method_name_list, size=12)
-    plt.yticks(size=13)
-    plt.ylabel('Wall-clock time (seconds)', size=15)
-    plt.title('Wall-clock Time of Test Time Adaptation', size=20)
+    fig = plt.figure(figsize=(6, 6))
+    barlist = plt.bar(x_pos, walltime_mean,
+                      yerr=walltime_std,
+                      alpha=0.5, ecolor='black', capsize=12
+                      )
+    color_list = color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
+    for i, bar in enumerate(barlist):
+        bar.set_color(color_list[i])
+    plt.xticks(x_pos, method_name_list, size=12, rotation=22)
+    plt.yticks(size=15)
+    plt.ylabel('Wall-clock time (seconds)', size=20)
+    #plt.title('Wall-clock Time of Test Time Adaptation (on CPU)', size=18)
     plt.grid()
     fig.tight_layout()
     fig.savefig(os.path.join(plot_output_dir, "adaptation_walltime.pdf"), bbox_inches="tight")

@@ -4,6 +4,7 @@ from typing_extensions import Literal
 
 import torch
 import torch.nn as nn
+import numpy as np
 
 from fs_mol.modules.graph_feature_extractor import (
     GraphFeatureExtractor,
@@ -79,8 +80,12 @@ class ADKTModel(nn.Module):
     def gp_params(self):
         gp_params = []
         for name, param in self.named_parameters():
-            if name.startswith("gp_model."):
-                gp_params.append(param)
+            if self.config.use_numeric_labels:
+                if name.startswith("gp_"):
+                    gp_params.append(param)
+            else:
+                if name.startswith("gp_model"):
+                    gp_params.append(param)
         return gp_params
 
     def reinit_gp_params(self, gp_input, use_lengthscale_prior=False):
@@ -107,10 +112,17 @@ class ADKTModel(nn.Module):
         else:
             ard_num_dims = None
 
-        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood().to(self.device)
+        if self.config.use_numeric_labels:
+            scale = 0.5
+            loc = np.log(0.01) + scale**2 # make sure that mode=0.01
+            noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+        else:
+            noise_prior = None
+        
+        self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=noise_prior).to(self.device)
         self.gp_model = ExactGPLayer(
             train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
-            kernel=kernel_type, ard_num_dims=ard_num_dims
+            kernel=kernel_type, ard_num_dims=ard_num_dims, use_numeric_labels=self.config.use_numeric_labels
         ).to(self.device)
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model).to(self.device)
 
@@ -148,8 +160,12 @@ class ADKTModel(nn.Module):
             support_features_flat = torch.nn.functional.normalize(support_features_flat, p=2, dim=1)
             query_features_flat = torch.nn.functional.normalize(query_features_flat, p=2, dim=1)
 
-        support_labels_converted = self.__convert_bool_labels(input_batch.support_labels)
-        query_labels_converted = self.__convert_bool_labels(input_batch.query_labels)
+        if self.config.use_numeric_labels:
+            support_labels_converted = input_batch.support_numeric_labels.float()
+            query_labels_converted = input_batch.query_numeric_labels.float()
+        else:
+            support_labels_converted = self.__convert_bool_labels(input_batch.support_labels)
+            query_labels_converted = self.__convert_bool_labels(input_batch.query_labels)
 
         # compute train/val loss if the model is in the training mode
         if self.training:

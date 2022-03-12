@@ -93,7 +93,7 @@ def main():
     model = ADKTVGPModelTrainer.build_from_model_file(
         model_weights_file,
         device=device,
-    )
+    ).to(device)
 
     test(
         model,

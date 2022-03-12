@@ -32,8 +32,10 @@ class MoleculeDKTFeatures(FSMolBatch):
 class DKTBatch:
     support_features: MoleculeDKTFeatures
     support_labels: np.ndarray
+    support_numeric_labels: np.ndarray
     query_features: MoleculeDKTFeatures
     query_labels: np.ndarray
+    query_numeric_labels: np.ndarray
 
     @property
     def num_support_samples(self) -> int:
@@ -53,6 +55,7 @@ class FeaturisedDKTTaskSample:
     num_positive_query_samples: int
     batches: List[DKTBatch]
     batch_labels: List[np.ndarray]
+    batch_numeric_labels: List[np.ndarray]
 
 
 def batcher_init_fn(batch_data: Dict[str, Any]):
@@ -74,16 +77,24 @@ def batcher_finalizer_fn(batch_data: Dict[str, Any]) -> Tuple[MoleculeDKTFeature
             **dataclasses.asdict(plain_batch),
         ),
         np.stack(batch_data["bool_labels"], axis=0),
+        np.stack(batch_data["numeric_labels"], axis=0),
     )
 
 
 def task_sample_to_dkt_task_sample(
-    task_sample: FSMolTaskSample, batcher: FSMolBatcher[MoleculeDKTFeatures, np.ndarray]
+    task_sample: FSMolTaskSample, batcher: FSMolBatcher[MoleculeDKTFeatures, np.ndarray], filter_numeric_labels: bool
 ) -> FeaturisedDKTTaskSample:
     support_batches = list(batcher.batch(task_sample.train_samples))
     if len(support_batches) > 1:
         raise ValueError("Support set too large to fit into a single batch!")
-    support_features, support_labels = support_batches[0]
+    support_features, support_labels, support_numeric_labels = support_batches[0]
+    if filter_numeric_labels:
+        log_support_numeric_labels = np.log(support_numeric_labels)
+        standardize_mean = log_support_numeric_labels.mean()
+        standardize_std = log_support_numeric_labels.std()
+        log_support_numeric_labels_standardized = (log_support_numeric_labels - standardize_mean) / standardize_std
+    else:
+        log_support_numeric_labels_standardized = support_numeric_labels
 
     # We need to do some hackery here to establish a stable batch size, as each
     # batch is the sum of support and query batches. To this end, we reset the
@@ -94,16 +105,24 @@ def task_sample_to_dkt_task_sample(
         batcher._max_num_graphs = max_num_query_graphs
         sample_batches = []
         batch_labels: List[np.ndarray] = []
-        for query_features, query_labels in batcher.batch(task_sample.test_samples):
+        batch_numeric_labels: List[np.ndarray] = []
+        for query_features, query_labels, query_numeric_labels in batcher.batch(task_sample.test_samples):
+            if filter_numeric_labels:
+                log_query_numeric_label_standardized = (np.log(query_numeric_labels) - standardize_mean) / standardize_std
+            else:
+                log_query_numeric_label_standardized = query_numeric_labels
             sample_batches.append(
                 DKTBatch(
                     support_features=support_features,
                     support_labels=support_labels,
+                    support_numeric_labels=log_support_numeric_labels_standardized,
                     query_features=query_features,
-                    query_labels=query_labels
+                    query_labels=query_labels,
+                    query_numeric_labels=log_query_numeric_label_standardized,
                 )
             )
             batch_labels.append(query_labels)
+            batch_numeric_labels.append(log_query_numeric_label_standardized)
     finally:
         batcher._max_num_graphs = orig_max_num_graphs
 
@@ -115,6 +134,7 @@ def task_sample_to_dkt_task_sample(
         num_positive_query_samples=sum(s.bool_label for s in task_sample.test_samples),
         batches=sample_batches,
         batch_labels=batch_labels,
+        batch_numeric_labels=batch_numeric_labels,
     )
 
 
@@ -143,6 +163,7 @@ def get_dkt_task_sample_iterable(
     max_num_nodes: Optional[int] = None,
     max_num_edges: Optional[int] = None,
     repeat: bool = False,
+    filter_numeric_labels: bool = False,
 ) -> Iterable[FeaturisedDKTTaskSample]:
     task_sampler = StratifiedTaskSampler(
         train_size_or_ratio=support_size, test_size_or_ratio=query_size
@@ -157,6 +178,17 @@ def get_dkt_task_sample_iterable(
         if len(paths) > 1:
             raise ValueError()
         task = FSMolTask.load_from_file(paths[0])
+
+        if filter_numeric_labels:
+            task_numeric_labels = np.array([task.samples[i].numeric_label for i in range(len(task.samples))])
+            if (
+                (np.all(task_numeric_labels>=0.0) and np.all(task_numeric_labels<=100.0)) 
+                or np.any(task_numeric_labels<=0.0) 
+                or np.any(np.isinf(task_numeric_labels)) 
+                or np.any(np.isnan(task_numeric_labels))
+            ):
+                return None
+
         num_task_samples = 0
         for _ in range(num_samples):
             try:
@@ -166,7 +198,7 @@ def get_dkt_task_sample_iterable(
                 logger.debug(f"{task.name}: Sampling failed: {e}")
                 continue
 
-            yield task_sample_to_dkt_task_sample(task_sample, batcher)
+            yield task_sample_to_dkt_task_sample(task_sample, batcher, filter_numeric_labels)
 
     return dataset.get_task_reading_iterable(
         data_fold=data_fold,

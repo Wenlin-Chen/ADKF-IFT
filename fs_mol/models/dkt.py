@@ -79,7 +79,7 @@ class DKTModel(nn.Module):
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()
         self.gp_model = ExactGPLayer(
             train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
-            kernel=kernel_type, ard_num_dims=ard_num_dims
+            kernel=kernel_type, ard_num_dims=ard_num_dims, use_numeric_labels=self.config.use_numeric_labels
         )
 
         if use_lengthscale_prior:
@@ -122,8 +122,12 @@ class DKTModel(nn.Module):
             support_features_flat = torch.nn.functional.normalize(support_features_flat, p=2, dim=1)
             query_features_flat = torch.nn.functional.normalize(query_features_flat, p=2, dim=1)
 
-        support_labels_converted = self.__convert_bool_labels(input_batch.support_labels)
-        query_labels_converted = self.__convert_bool_labels(input_batch.query_labels)
+        if self.config.use_numeric_labels:
+            support_labels_converted = input_batch.support_numeric_labels.float()
+            query_labels_converted = input_batch.query_numeric_labels.float()
+        else:
+            support_labels_converted = self.__convert_bool_labels(input_batch.support_labels)
+            query_labels_converted = self.__convert_bool_labels(input_batch.query_labels)
 
         if self.training:
             combined_features_flat = torch.cat([support_features_flat, query_features_flat], dim=0)

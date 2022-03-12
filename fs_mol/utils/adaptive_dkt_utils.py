@@ -23,14 +23,16 @@ from fs_mol.data.dkt import (
 from fs_mol.models.adaptive_dkt import ADKTModel, ADKTModelConfig
 from fs_mol.models.abstract_torch_fsmol_model import MetricType
 from fs_mol.utils.metrics import (
-    BinaryEvalMetrics,
     compute_binary_task_metrics,
     avg_metrics_over_tasks,
     avg_task_metrics_list,
+    compute_numeric_task_metrics,
+    avg_numeric_metrics_over_tasks,
+    avg_task_numeric_metrics_list
 )
 from fs_mol.utils.metric_logger import MetricLogger
 from fs_mol.utils.torch_utils import torchify
-from fs_mol.utils.test_utils import eval_model, FSMolTaskSampleEvalResults
+from fs_mol.utils.test_utils import eval_model
 
 from botorch.optim.fit import fit_gpytorch_scipy
 
@@ -60,15 +62,17 @@ class ADKTModelTrainerConfig(ADKTModelConfig):
     use_ard: bool = False
     gp_kernel: str = "matern"
     use_lengthscale_prior: bool = True
+    use_numeric_labels: bool = False
     
 
 def run_on_batches(
     model: ADKTModel,
     batches: List[DKTBatch],
     batch_labels: List[torch.Tensor],
+    batch_numeric_labels: List[torch.Tensor],
     train: bool = False,
     #tasks_per_batch: int = 1,
-) -> Tuple[float, BinaryEvalMetrics]:
+):
 
     if train:
         assert len(batches) == 1
@@ -78,7 +82,7 @@ def run_on_batches(
     task_labels: List[np.ndarray] = []
 
     #num_gradient_accumulation_steps = len(batches) * tasks_per_batch
-    for batch_features, batch_labels in zip(batches, batch_labels):
+    for batch_features, this_batch_labels, this_batch_numeric_labels in zip(batches, batch_labels, batch_numeric_labels):
         # Compute task loss
         model.train()
         _ = model(batch_features, train_loss=True)
@@ -89,16 +93,23 @@ def run_on_batches(
             model.eval()
             with torch.no_grad():
                 batch_logits = model(batch_features, train_loss=None)
-                batch_preds = torch.sigmoid(batch_logits.mean).detach().cpu().numpy()
+                if model.config.use_numeric_labels:
+                    batch_preds = batch_logits.mean.detach().cpu().numpy()
+                    task_labels.append(this_batch_numeric_labels.detach().cpu().numpy())
+                else:
+                    batch_preds = torch.sigmoid(batch_logits.mean).detach().cpu().numpy()
+                    task_labels.append(this_batch_labels.detach().cpu().numpy())
                 task_preds.append(batch_preds)
-                task_labels.append(batch_labels.detach().cpu().numpy())
 
     if train:
         metrics = None
     else:
-        metrics = compute_binary_task_metrics(
-            predictions=np.concatenate(task_preds, axis=0), labels=np.concatenate(task_labels, axis=0)
-        )
+        predictions = np.concatenate(task_preds, axis=0)
+        labels=np.concatenate(task_labels, axis=0)
+        if model.config.use_numeric_labels:
+            metrics = compute_numeric_task_metrics(predictions=predictions, labels=labels)
+        else:
+            metrics = compute_binary_task_metrics(predictions=predictions, labels=labels)
 
     return metrics
 
@@ -113,29 +124,39 @@ def evaluate_adkt_model(
     query_size: Optional[int] = None,
     data_fold: DataFold = DataFold.TEST,
     save_dir: Optional[str] = None,
-) -> Dict[str, List[FSMolTaskSampleEvalResults]]:
+):
 
     batcher = get_dkt_batcher(max_num_graphs=batch_size)
 
     def test_model_fn(
         task_sample: FSMolTaskSample, temp_out_folder: str, seed: int
-    ) -> BinaryEvalMetrics:
+    ):
         dkt_task_sample = torchify(
-            task_sample_to_dkt_task_sample(task_sample, batcher), device=model.device
+            task_sample_to_dkt_task_sample(task_sample, batcher, model.config.use_numeric_labels), device=model.device
         )
 
         result_metrics = run_on_batches(
             model,
             batches=dkt_task_sample.batches,
             batch_labels=dkt_task_sample.batch_labels,
+            batch_numeric_labels=dkt_task_sample.batch_numeric_labels,
             train=False,
         )
-        logger.info(
-            f"{dkt_task_sample.task_name}:"
-            f" {dkt_task_sample.num_support_samples:3d} support samples,"
-            f" {dkt_task_sample.num_query_samples:3d} query samples."
-            f" Avg. prec. {result_metrics.avg_precision:.5f}.",
-        )
+        
+        if model.config.use_numeric_labels:
+            logger.info(
+                f"{dkt_task_sample.task_name}:"
+                f" {dkt_task_sample.num_support_samples:3d} support samples,"
+                f" {dkt_task_sample.num_query_samples:3d} query samples."
+                f" R2 {result_metrics.r2:.5f}.",
+            )
+        else:
+            logger.info(
+                f"{dkt_task_sample.task_name}:"
+                f" {dkt_task_sample.num_support_samples:3d} support samples,"
+                f" {dkt_task_sample.num_query_samples:3d} query samples."
+                f" Avg. prec. {result_metrics.avg_precision:.5f}.",
+            )
 
         return result_metrics
 
@@ -148,6 +169,7 @@ def evaluate_adkt_model(
         test_size_or_ratio=query_size,
         fold=data_fold,
         seed=seed,
+        filter_numeric_labels=model.config.use_numeric_labels,
     )
 
 
@@ -176,7 +198,10 @@ def validate_by_finetuning_on_tasks(
     )
 
     # take the dictionary of task_results and return correct mean over all tasks
-    mean_metrics = avg_metrics_over_tasks(task_results)
+    if model.config.use_numeric_labels:
+        mean_metrics = avg_numeric_metrics_over_tasks(task_results)
+    else:
+        mean_metrics = avg_metrics_over_tasks(task_results)
     if aml_run is not None:
         for metric_name, (metric_mean, _) in mean_metrics.items():
             aml_run.log(f"valid_task_test_{metric_name}", float(metric_mean))
@@ -311,10 +336,11 @@ class ADKTModelTrainer(ADKTModel):
                 support_size=self.config.support_set_size,
                 query_size=self.config.query_set_size,
                 repeat=True,
+                filter_numeric_labels=self.config.use_numeric_labels,
             )
         )
 
-        best_validation_avg_prec = 0.0
+        best_validation_score = -np.inf
         metric_logger = MetricLogger(
             log_fn=lambda msg: logger.info(msg),
             aml_run=aml_run,
@@ -335,10 +361,12 @@ class ADKTModelTrainer(ADKTModel):
                 train_task_sample = torchify(task_sample, device=device)
                 batches = train_task_sample.batches
                 batch_labels = train_task_sample.batch_labels
+                batch_numeric_labels = train_task_sample.batch_numeric_labels
                 _ = run_on_batches(
                     self,
                     batches=batches,
                     batch_labels=batch_labels,
+                    batch_numeric_labels=batch_numeric_labels,
                     train=True,
                     #tasks_per_batch=self.config.tasks_per_batch,
                 )
@@ -348,21 +376,30 @@ class ADKTModelTrainer(ADKTModel):
                 self.train()
 
                 feature_extractor_params_names = [n for n, _ in self.named_parameters() if not n.startswith("gp_")]
-                gp_params_names = [n for n, _ in self.named_parameters() if n.startswith("gp_model.")]
+                if self.config.use_numeric_labels:
+                    gp_params_names = [n for n, _ in self.named_parameters() if n.startswith("gp_")]
+                else:
+                    gp_params_names = [n for n, _ in self.named_parameters() if n.startswith("gp_model")]
 
                 def f_inner(params_outer, params_inner):
                     feature_extractor_params_dict = {n: p for n, p in zip(feature_extractor_params_names, params_outer)}
                     gp_params_dict = {n: p for n, p in zip(gp_params_names, params_inner)}
-                    likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
-                    self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
+                    if self.config.use_numeric_labels:
+                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict}
+                    else:
+                        likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
+                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
                     batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": True, "is_functional_call": True})
                     return batch_loss
 
                 def f_outer(params_outer, params_inner):
                     feature_extractor_params_dict = {n: p for n, p in zip(feature_extractor_params_names, params_outer)}
                     gp_params_dict = {n: p for n, p in zip(gp_params_names, params_inner)}
-                    likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
-                    self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
+                    if self.config.use_numeric_labels:
+                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict}
+                    else:
+                        likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
+                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
                     batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": False, "predictive_val_loss": True, "is_functional_call": True})
                     return batch_loss
 
@@ -393,21 +430,35 @@ class ADKTModelTrainer(ADKTModel):
                 #acc=task_batch_avg_metrics["acc"][0],
             )
 
+            if self.config.use_numeric_labels:
+                metric_to_use = "r2"
+            else:
+                metric_to_use = "avg_precision"
+
             if step % self.config.validate_every_num_steps == 0:
-                valid_metric = validate_by_finetuning_on_tasks(self, dataset, aml_run=aml_run)
+                valid_metric = validate_by_finetuning_on_tasks(self, dataset, aml_run=aml_run, metric_to_use=metric_to_use)
 
                 if aml_run:
                     # printing some measure of loss on all validation tasks.
-                    aml_run.log(f"valid_mean_avg_prec", valid_metric)
+                    if self.config.use_numeric_labels:
+                        aml_run.log(f"valid_mean_r2", valid_metric)
+                    else:
+                        aml_run.log(f"valid_mean_avg_prec", valid_metric)
 
-                logger.info(
-                    f"Validated at train step [{step}/{self.config.num_train_steps}],"
-                    f" Valid Avg. Prec.: {valid_metric:.3f}",
-                )
+                if self.config.use_numeric_labels:
+                    logger.info(
+                        f"Validated at train step [{step}/{self.config.num_train_steps}],"
+                        f" Valid R2: {valid_metric:.3f}",
+                    )
+                else:
+                    logger.info(
+                        f"Validated at train step [{step}/{self.config.num_train_steps}],"
+                        f" Valid Avg. Prec.: {valid_metric:.3f}",
+                    )
 
                 # save model if validation avg prec is the best so far
-                if valid_metric > best_validation_avg_prec:
-                    best_validation_avg_prec = valid_metric
+                if valid_metric > best_validation_score:
+                    best_validation_score = valid_metric
                     model_path = os.path.join(out_dir, "best_validation.pt")
                     self.save_model(model_path)
                     logger.info(f"Updated {model_path} to new best model at train step {step}")
