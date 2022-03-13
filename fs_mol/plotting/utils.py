@@ -1146,14 +1146,14 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir):
     fig = plt.figure(figsize=(6, 6))
     barlist = plt.bar(x_pos, walltime_mean,
                       yerr=walltime_std,
-                      alpha=0.5, ecolor='black', capsize=12
+                      alpha=0.8, ecolor='black', capsize=12
                       )
     color_list = color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
     for i, bar in enumerate(barlist):
         bar.set_color(color_list[i])
     plt.xticks(x_pos, method_name_list, size=12, rotation=22)
     plt.yticks(size=15)
-    plt.ylabel('Wall-clock time (seconds)', size=20)
+    plt.ylabel('Wall-clock time (seconds)', size=16)
     #plt.title('Wall-clock Time of Test Time Adaptation (on CPU)', size=18)
     plt.grid()
     fig.tight_layout()
