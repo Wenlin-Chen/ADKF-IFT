@@ -113,7 +113,7 @@ class ADKTModel(nn.Module):
             ard_num_dims = None
 
         if self.config.use_numeric_labels:
-            scale = 0.5
+            scale = 0.25
             loc = np.log(0.01) + scale**2 # make sure that mode=0.01
             noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
         else:
