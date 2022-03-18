@@ -62,15 +62,15 @@ class CNPModel(nn.Module):
         )
 
         self.encoder_final_fc = nn.Sequential(
-            nn.Linear(64+self.config.graph_feature_extractor_config.readout_config.output_dim, 256),
+            nn.Linear(64+self.config.graph_feature_extractor_config.readout_config.output_dim, 512),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(512, 512),
             nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(512, 512),
         )
 
         self.decoder_fc = nn.Sequential(
-            nn.Linear(128+self.config.graph_feature_extractor_config.readout_config.output_dim, 512),
+            nn.Linear(512+self.config.graph_feature_extractor_config.readout_config.output_dim, 512),
             nn.ReLU(),
             nn.Linear(512, 512),
             nn.ReLU(),
