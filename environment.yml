@@ -34,3 +34,4 @@ dependencies:
       - xlsxwriter
       - autorank
       - azureml-core
+      - openpyxl

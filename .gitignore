@@ -356,4 +356,4 @@ outputs
 # Walltime evaluation bash script
 eval_walltime.sh
 
-bayes_opt/
+.ipynb_checkpoints/

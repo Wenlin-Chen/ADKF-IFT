@@ -251,7 +251,7 @@ class DKTModelTrainer(DKTModel):
     def load_model_weights(
         self,
         path: str,
-        load_task_specific_weights: bool,
+        #load_task_specific_weights: bool,
         quiet: bool = False,
         device: Optional[torch.device] = None,
     ):
@@ -330,7 +330,7 @@ class DKTModelTrainer(DKTModel):
         model.load_model_weights(
             path=model_file,
             quiet=quiet,
-            load_task_specific_weights=True,
+            #load_task_specific_weights=True,
             device=device,
         )
         return model
