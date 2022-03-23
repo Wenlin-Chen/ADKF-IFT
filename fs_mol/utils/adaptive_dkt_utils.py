@@ -376,30 +376,19 @@ class ADKTModelTrainer(ADKTModel):
                 self.train()
 
                 feature_extractor_params_names = [n for n, _ in self.named_parameters() if not n.startswith("gp_")]
-                if self.config.use_numeric_labels:
-                    gp_params_names = [n for n, _ in self.named_parameters() if n.startswith("gp_")]
-                else:
-                    gp_params_names = [n for n, _ in self.named_parameters() if n.startswith("gp_model")]
+                gp_params_names = [n for n, _ in self.named_parameters() if n.startswith("gp_")]
 
                 def f_inner(params_outer, params_inner):
                     feature_extractor_params_dict = {n: p for n, p in zip(feature_extractor_params_names, params_outer)}
                     gp_params_dict = {n: p for n, p in zip(gp_params_names, params_inner)}
-                    if self.config.use_numeric_labels:
-                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict}
-                    else:
-                        likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
-                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
+                    self_params_dict = {**feature_extractor_params_dict, **gp_params_dict}
                     batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": True, "is_functional_call": True})
                     return batch_loss
 
                 def f_outer(params_outer, params_inner):
                     feature_extractor_params_dict = {n: p for n, p in zip(feature_extractor_params_names, params_outer)}
                     gp_params_dict = {n: p for n, p in zip(gp_params_names, params_inner)}
-                    if self.config.use_numeric_labels:
-                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict}
-                    else:
-                        likelihood_params_dict = {n: p for n, p in self.named_parameters() if n.startswith("gp_likelihood")}
-                        self_params_dict = {**feature_extractor_params_dict, **gp_params_dict, **likelihood_params_dict}
+                    self_params_dict = {**feature_extractor_params_dict, **gp_params_dict}
                     batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": False, "predictive_val_loss": True, "is_functional_call": True})
                     return batch_loss
 

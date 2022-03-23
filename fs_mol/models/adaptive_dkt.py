@@ -80,12 +80,8 @@ class ADKTModel(nn.Module):
     def gp_params(self):
         gp_params = []
         for name, param in self.named_parameters():
-            if self.config.use_numeric_labels:
-                if name.startswith("gp_"):
-                    gp_params.append(param)
-            else:
-                if name.startswith("gp_model"):
-                    gp_params.append(param)
+            if name.startswith("gp_"):
+                gp_params.append(param)
         return gp_params
 
     def reinit_gp_params(self, gp_input, use_lengthscale_prior=False):
@@ -117,7 +113,9 @@ class ADKTModel(nn.Module):
             loc = np.log(0.01) + scale**2 # make sure that mode=0.01
             noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
         else:
-            noise_prior = None
+            scale = 0.25
+            loc = np.log(0.1) + scale**2 # make sure that mode=0.01
+            noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
         
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=noise_prior).to(self.device)
         self.gp_model = ExactGPLayer(

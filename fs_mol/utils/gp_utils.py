@@ -13,7 +13,7 @@ class ExactGPLayer(gpytorch.models.ExactGP):
     '''
     def __init__(self, train_x, train_y, likelihood, kernel, ard_num_dims=None, use_numeric_labels=False):
         #Set the likelihood noise and enable/disable learning
-        likelihood.noise_covar.raw_noise.requires_grad = use_numeric_labels
+        likelihood.noise_covar.raw_noise.requires_grad = True
         likelihood.noise_covar.noise = 0.01 if use_numeric_labels else 0.1
         super().__init__(train_x, train_y, likelihood)
         #self.mean_module = gpytorch.means.ConstantMean()
