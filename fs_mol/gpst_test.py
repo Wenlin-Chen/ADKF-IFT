@@ -15,6 +15,7 @@ from botorch.optim.fit import fit_gpytorch_scipy
 sys.path.insert(0, str(project_root()))
 
 from fs_mol.utils.gp_utils import ExactTanimotoGP
+from fs_mol.utils.chem_utils import get_binary_fingerprints
 
 from fs_mol.data.fsmol_task import FSMolTaskSample
 from fs_mol.utils.metrics import compute_numeric_task_metrics
@@ -38,13 +39,16 @@ def test(
     task_sample: FSMolTaskSample,
     device: torch.device,
     use_numeric_labels: bool,
-):
+):  
+    # get data
     train_data = task_sample.train_samples
     test_data = task_sample.test_samples
 
-    # get data in to form for sklearn
-    X_train = torch.from_numpy(np.array([x.get_fingerprint() for x in train_data])).float().to(device)
-    X_test = torch.from_numpy(np.array([x.get_fingerprint() for x in test_data])).float().to(device)
+    train_fp = get_binary_fingerprints(train_data, use_count_simulation=True)
+    test_fp = get_binary_fingerprints(test_data, use_count_simulation=True)
+
+    X_train = torch.from_numpy(np.array(train_fp)).float().to(device)
+    X_test = torch.from_numpy(np.array(test_fp)).float().to(device)
     logger.info(f" Training {model_name} with {X_train.shape[0]} datapoints.")
     
     if use_numeric_labels:

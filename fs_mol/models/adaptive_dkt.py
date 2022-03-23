@@ -114,7 +114,7 @@ class ADKTModel(nn.Module):
             noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
         else:
             scale = 0.25
-            loc = np.log(0.1) + scale**2 # make sure that mode=0.01
+            loc = np.log(0.1) + scale**2 # make sure that mode=0.1
             noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
         
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=noise_prior).to(self.device)
