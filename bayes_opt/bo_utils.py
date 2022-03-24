@@ -203,7 +203,11 @@ class CustomKernelGP(gpytorch.models.ExactGP, botorch.models.gpytorch.GPyTorchMo
 
 def create_gp(train_x, train_y, kernel_type, device):
 
-    likelihood = gpytorch.likelihoods.GaussianLikelihood().to(device)
+    scale = 0.25
+    loc = np.log(0.01) + scale**2 # make sure that mode=0.01
+    noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+
+    likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior).to(device)
     likelihood.noise_covar.noise = 0.01
 
     if kernel_type == "tanimoto":
@@ -213,6 +217,12 @@ def create_gp(train_x, train_y, kernel_type, device):
         kernel = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel())
 
         median_lengthscale_init = compute_median_lengthscale_init(train_x)
+        scale = 0.25
+        loc = torch.log(median_lengthscale_init).item() + scale**2 # make sure that mode=median_lengthscale_init
+        lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+        kernel.base_kernel.register_prior(
+            "lengthscale_prior", lengthscale_prior, lambda m: m.lengthscale, lambda m, v: m._set_lengthscale(v)
+        )
         kernel.base_kernel.lengthscale = torch.ones_like(kernel.base_kernel.lengthscale).to(device) * median_lengthscale_init
     
     else:
