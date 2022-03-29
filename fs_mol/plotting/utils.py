@@ -916,9 +916,11 @@ def make_box_plot(
     else:
         hc = "all"
 
+    fig_file_name = f"comparison_boxplot_{support_set_size}_hc_{hc}_numeric.pdf" if numeric else f"comparison_boxplot_{support_set_size}_hc_{hc}.pdf"
+
     if plot_output_dir is not None:
         plt.savefig(
-            os.path.join(plot_output_dir, f"comparison_boxplot_{support_set_size}_hc_{hc}.pdf"),
+            os.path.join(plot_output_dir, fig_file_name),
             bbox_inches="tight",
         )
 
@@ -1118,9 +1120,11 @@ def plot_by_size(
         ax.set_ylim([0.0, 0.40])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
 
+    fig_file_name = f"comparison_plot_hc_{highlight_class}_numeric.pdf" if numeric else f"comparison_plot_hc_{highlight_class}.pdf"
+
     if plot_output_dir is not None:
         plt.savefig(
-            os.path.join(plot_output_dir, f"comparison_plot_hc_{highlight_class}.pdf"),
+            os.path.join(plot_output_dir, fig_file_name),
             bbox_inches="tight",
         )
 
