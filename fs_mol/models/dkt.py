@@ -15,6 +15,10 @@ from fs_mol.utils.gp_utils import ExactGPLayer
 
 import gpytorch
 from gpytorch.distributions import MultivariateNormal
+from botorch.optim.fit import fit_gpytorch_scipy
+
+from copy import deepcopy
+
 
 FINGERPRINT_DIM = 2048
 PHYS_CHEM_DESCRIPTORS_DIM = 42
@@ -34,6 +38,7 @@ class DKTModel(nn.Module):
     def __init__(self, config: DKTModelConfig):
         super().__init__()
         self.config = config
+        self.test_time_adaptation = False
 
         # Create GNN if needed:
         if self.config.used_features.startswith("gnn"):
@@ -97,6 +102,14 @@ class DKTModel(nn.Module):
     def device(self) -> torch.device:
         return next(self.parameters()).device
 
+    def save_gp_params(self):
+        self.gp_model_params = deepcopy(self.gp_model.state_dict())
+        self.gp_likelihood_params = deepcopy(self.gp_likelihood.state_dict())
+
+    def load_gp_params(self):
+        self.gp_model.load_state_dict(self.gp_model_params)
+        self.gp_likelihood.load_state_dict(self.gp_likelihood_params)
+
     def forward(self, input_batch: DKTBatch):
         support_features: List[torch.Tensor] = []
         query_features: List[torch.Tensor] = []
@@ -137,9 +150,17 @@ class DKTModel(nn.Module):
             logits = self.gp_model(combined_features_flat)
         else:
             self.gp_model.train()
-            self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-            self.gp_model.eval()
+            if self.test_time_adaptation:
+                self.load_gp_params()
 
+            self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted, strict=False)
+            
+            if self.test_time_adaptation:
+                self.gp_likelihood.train()
+                fit_gpytorch_scipy(self.mll)
+            
+            self.gp_model.eval()
+            self.gp_likelihood.eval()
             with torch.no_grad():
                 logits = self.gp_likelihood(self.gp_model(query_features_flat))
 

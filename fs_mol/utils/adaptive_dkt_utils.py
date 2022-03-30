@@ -63,6 +63,7 @@ class ADKTModelTrainerConfig(ADKTModelConfig):
     gp_kernel: str = "matern"
     use_lengthscale_prior: bool = True
     use_numeric_labels: bool = False
+    ignore_grad_correction: bool = False
     
 
 def run_on_batches(
@@ -392,7 +393,7 @@ class ADKTModelTrainer(ADKTModel):
                     batch_loss = functional_call(self, self_params_dict, batches[0], kwargs={"train_loss": False, "predictive_val_loss": True, "is_functional_call": True})
                     return batch_loss
 
-                batch_loss = cauchy_hypergradient(f_outer, f_inner, tuple(self.feature_extractor_params()), tuple(self.gp_params()), self.device, ignore_grad_correction=False)
+                batch_loss = cauchy_hypergradient(f_outer, f_inner, tuple(self.feature_extractor_params()), tuple(self.gp_params()), self.device, ignore_grad_correction=self.config.ignore_grad_correction)
                 task_loss = batch_loss / batches[0].query_labels.shape[0] #  report per-sample loss
                 task_loss = task_loss.cpu().item()
                 task_batch_losses.append(task_loss)

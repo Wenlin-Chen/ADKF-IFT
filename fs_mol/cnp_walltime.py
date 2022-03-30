@@ -10,12 +10,14 @@ sys.path.insert(0, str(project_root()))
 
 from fs_mol.data import FSMolDataset
 from fs_mol.models.abstract_torch_fsmol_model import resolve_starting_model_file
-from fs_mol.models.dkt import DKTModel
-from fs_mol.utils.dkt_utils import (
-    DKTModelTrainer,
-    evaluate_dkt_model,
+from fs_mol.models.cnp import CNPModel
+from fs_mol.utils.cnp_utils import (
+    CNPModelTrainer,
+    evaluate_cnp_model,
 )
-from fs_mol.utils.test_utils import add_eval_cli_args, set_up_test_run
+from fs_mol.utils.test_utils import add_walltime_cli_args, set_up_test_run
+
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def parse_command_line():
     parser = argparse.ArgumentParser(
-        description="Test a DKT model on molecules.",
+        description="Test a CNP model on molecules.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -33,7 +35,7 @@ def parse_command_line():
         help="File to load model from (determines model architecture).",
     )
 
-    add_eval_cli_args(parser)
+    add_walltime_cli_args(parser)
 
     parser.add_argument(
         "--batch-size",
@@ -46,17 +48,12 @@ def parse_command_line():
         action="store_true",
         help="Do not use trained weights, but start from a fresh, random initialisation.",
     )
-    parser.add_argument(
-        "--test-time-adaptation",
-        action="store_true",
-        help="Turn on test time adaptation for DKT. Default: False.",
-    )
     args = parser.parse_args()
     return args
 
 
 def test(
-    model: DKTModel,
+    model: CNPModel,
     dataset: FSMolDataset,
     save_dir: str,
     context_sizes: List[int],
@@ -65,11 +62,11 @@ def test(
     batch_size: int,
 ):
     """
-    Same procedure as validation for DKTModel. Each validation task is used to
+    Same procedure as validation for CNPModel. Each validation task is used to
     evaluate the model more than once, dependent on number of context sizes and samples.
     """
 
-    return evaluate_dkt_model(
+    return evaluate_cnp_model(
         model,
         dataset,
         support_sizes=context_sizes,
@@ -82,27 +79,26 @@ def test(
 
 def main():
     args = parse_command_line()
-    out_dir, dataset = set_up_test_run("DKTModel", args, torch=True)
+    out_dir, dataset = set_up_test_run("walltime_CNPModel", args, torch=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
     model_weights_file = resolve_starting_model_file(
         model_file=args.TRAINED_MODEL,
-        model_cls=DKTModel,
+        model_cls=CNPModel,
         out_dir=out_dir,
         use_fresh_param_init=args.use_fresh_param_init,
         device=device,
     )
 
-    model = DKTModelTrainer.build_from_model_file(
+    model = CNPModelTrainer.build_from_model_file(
         model_weights_file,
         device=device,
-    ).to(device)
-    model.test_time_adaptation = args.test_time_adaptation
-    if args.test_time_adaptation:
-        model.save_gp_params()
+    )
 
+    torch.cuda.synchronize()
+    start_time = time.perf_counter()
     test(
         model,
         dataset,
@@ -112,6 +108,11 @@ def main():
         seed=args.seed,
         batch_size=args.batch_size,
     )
+    torch.cuda.synchronize()
+    end_time = time.perf_counter()
+
+    walltime = end_time - start_time
+    logger.info(f"Walltime: {walltime} seconds")
 
 
 if __name__ == "__main__":

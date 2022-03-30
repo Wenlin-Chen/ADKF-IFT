@@ -1139,7 +1139,7 @@ def plot_by_size(
     plt.close(fig)
 
 
-def walltime_plot(walltime_list, method_name_list, plot_output_dir):
+def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=False):
     assert len(walltime_list) == len(method_name_list)
 
     walltime_np = [np.array(walltime) for walltime in walltime_list]
@@ -1147,7 +1147,7 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir):
     walltime_std = [np.std(walltime) for walltime in walltime_np]
     x_pos = list(range(len(walltime_list)))
 
-    fig = plt.figure(figsize=(6, 6))
+    fig = plt.figure(figsize=(5, 4))
     barlist = plt.bar(x_pos, walltime_mean,
                       yerr=walltime_std,
                       alpha=0.8, ecolor='black', capsize=12
@@ -1156,9 +1156,11 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir):
     for i, bar in enumerate(barlist):
         bar.set_color(color_list[i])
     plt.xticks(x_pos, method_name_list, size=12, rotation=22)
-    plt.yticks(size=15)
-    plt.ylabel('Wall-clock time (seconds)', size=16)
+    plt.yticks(size=10)
+    plt.ylabel('Wall-clock time (seconds)', size=10)
     #plt.title('Wall-clock Time of Test Time Adaptation (on CPU)', size=18)
     plt.grid()
+    plt.ylim(0, 800)
     fig.tight_layout()
-    fig.savefig(os.path.join(plot_output_dir, "adaptation_walltime.pdf"), bbox_inches="tight")
+    fig_file_name = "adaptation_walltime_numeric.pdf" if numeric else "adaptation_walltime.pdf"
+    fig.savefig(os.path.join(plot_output_dir, fig_file_name), bbox_inches="tight")

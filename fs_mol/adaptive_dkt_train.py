@@ -124,6 +124,11 @@ def parse_command_line():
         action="store_true",
         help="Perform regression for the numeric labels (log concentration). Default: perform binary classification for the bool labels (active/inactive).",
     )
+    parser.add_argument(
+        "--ignore-grad-correction",
+        action="store_true",
+        help="Ignore the second order term in the hypergradient. Default: False.",
+    )
     args = parser.parse_args()
     return args
 
@@ -147,6 +152,7 @@ def make_trainer_config(args: argparse.Namespace) -> ADKTModelTrainerConfig:
         gp_kernel=args.gp_kernel,
         use_lengthscale_prior=args.use_lengthscale_prior,
         use_numeric_labels=args.use_numeric_labels,
+        ignore_grad_correction=args.ignore_grad_correction,
     )
 
 
