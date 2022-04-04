@@ -1152,9 +1152,9 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=Fals
                       yerr=walltime_std,
                       alpha=0.8, ecolor='black', capsize=12
                       )
-    color_list = color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
-    for i, bar in enumerate(barlist):
-        bar.set_color(color_list[i])
+    #color_list = color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
+    #for i, bar in enumerate(barlist):
+    #    bar.set_color(color_list[i])
     plt.xticks(x_pos, method_name_list, size=12, rotation=22)
     plt.yticks(size=10)
     plt.ylabel('Wall-clock time (seconds)', size=10)

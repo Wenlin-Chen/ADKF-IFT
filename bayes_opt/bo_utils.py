@@ -33,6 +33,7 @@ from rdkit.Chem import (
 
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 
 import torch
 import gpytorch
@@ -41,14 +42,29 @@ from botorch.optim.fit import fit_gpytorch_scipy
 
 from dpu_utils.utils import RichPath
 
-from copy import deepcopy
-
 
 def get_feature_extractors_from_metadata(metadata_path, metadata_filename="metadata.pkl.gz"):
     metapath = RichPath.create(metadata_path)
     path = metapath.join(metadata_filename)
     metadata = path.read_by_file_suffix()
     return metadata["feature_extractors"]
+
+
+def unit_factor(unit):
+    """Return the factor corresponding to the unit, e.g. 1E-9 for nM.
+    Known units are: mM, uM, nM, pM. Raises ValueError for unknown unit."""
+    units = ["mm", "um", "nm", "pm"]
+    pos = units.index(unit.lower()) + 1
+    factor = 10 ** -(pos * 3)
+    return factor
+
+
+def pic50(ic50, unit="um"):
+    """Calculate pIC50 from IC50. Optionally, a unit for the input IC50 value may be given.
+    Known units are: mM, uM, nM, pM"""
+    if unit is not None:
+        ic50 *= unit_factor(unit)
+    return float(-math.log10(ic50))
 
 
 def load_antibiotics_dataset(xlsx_file, metadata_path):
@@ -109,6 +125,72 @@ def load_antibiotics_dataset(xlsx_file, metadata_path):
     return FSMolTask(name="antibiotics", samples=dataset)
 
 
+def load_covid_moonshot_dataset(csv_file, metadata_path):
+    df = pd.read_csv(csv_file, sep=",", header=0)
+    df = df.sort_values(by=["f_avg_IC50"], ascending=True)
+    dataset = []
+
+    # get pre-defined atom_feature_extractors from metadata provided in FS-Mol
+    atom_feature_extractors = get_feature_extractors_from_metadata(metadata_path)
+
+    for i, row in df.iterrows():
+
+        # get molecule info from the csv file
+        raw_numeric_label = float(row["f_avg_IC50"])
+        smiles = CanonSmiles(row["SMILES"].strip())
+        if np.isnan(raw_numeric_label):
+            print(
+                f"Skipping datapoint {smiles} (IC50 Fluorescence not available)."
+            )
+            continue
+
+        numeric_label = float(-1.0 * pic50(raw_numeric_label))
+
+        bool_label = True if raw_numeric_label < 5.0 else False
+        
+        # get fingerprint
+        rdkit_mol = MolFromSmiles(smiles)
+        fp_vec = rdFingerprintGenerator.GetCountFPs([rdkit_mol], fpType=rdFingerprintGenerator.MorganFP)[0]
+        fp_numpy = np.zeros((0,), np.int8) 
+        DataStructs.ConvertToNumpyArray(fp_vec, fp_numpy)
+        
+        # get graph
+        try:
+            graph_dict = molecule_to_graph(rdkit_mol, atom_feature_extractors)
+            adjacency_lists = []
+            for adj_list in graph_dict["adjacency_lists"]:
+                if adj_list:
+                    adjacency_lists.append(np.array(adj_list, dtype=np.int64))
+                else:
+                    adjacency_lists.append(np.zeros(shape=(0, 2), dtype=np.int64))
+            graph = GraphData(
+                node_features=np.array(graph_dict["node_features"], dtype=np.float32), 
+                adjacency_lists=adjacency_lists, 
+                edge_features=[]
+            )
+        except IndexError:
+            print(
+                f"Skipping datapoint {smiles}, cannot featurise with current metadata."
+            )
+            continue
+
+        # get descriptors
+        descriptors = []
+        for descr in Descriptors._descList:
+            _, descr_calc_fn = descr
+            descriptors.append(descr_calc_fn(rdkit_mol))
+        descriptors = np.array(descriptors, dtype=np.float32)
+        
+        # create a MoleculeDatapoint object
+        mol = MoleculeDatapoint(
+            task_name="covid_moonshot", smiles=smiles, graph=graph, 
+            numeric_label=numeric_label, bool_label=bool_label, 
+            fingerprint=fp_numpy, descriptors=descriptors)
+        dataset.append(mol)
+
+    return FSMolTask(name="covid_moonshot", samples=dataset)
+
+
 def task_to_batches(
     task: FSMolTask, batcher: FSMolBatcher[MoleculeDKTFeatures, np.ndarray]
 ):
@@ -120,7 +202,8 @@ def task_to_batches(
     return batches
 
 
-def run_gp_ei_bo(dataset, x_all, y_all, num_init_points, query_batch_size, num_bo_iters, kernel_type, device):
+# Minimizing; data points should be sorted according to the value of y_all in the ascending order
+def run_gp_ei_bo(dataset, x_all, y_all, num_init_points, query_batch_size, num_bo_iters, kernel_type, device, init_from, noise_init=0.01, noise_prior=True):
     
     y_mean = y_all.mean()
     y_std = y_all.std()
@@ -129,7 +212,7 @@ def run_gp_ei_bo(dataset, x_all, y_all, num_init_points, query_batch_size, num_b
     bo_record = []
     queried_idx = []
     
-    init_points_idx = np.random.choice(np.arange(2000, len(dataset)), size=num_init_points, replace=False).tolist()
+    init_points_idx = np.random.choice(np.arange(init_from, len(dataset)), size=num_init_points, replace=False).tolist()
     queried_idx.extend(init_points_idx)
     
     x_queried, y_queried = x_all[queried_idx, :], y_all[queried_idx]
@@ -137,7 +220,7 @@ def run_gp_ei_bo(dataset, x_all, y_all, num_init_points, query_batch_size, num_b
     bo_record.append(min(queried_idx))
     
     for i in range(num_bo_iters):
-        likelihood, model, mll = create_gp(x_queried, y_queried, kernel_type, device)
+        likelihood, model, mll = create_gp(x_queried, y_queried, kernel_type, device, noise_init, noise_prior)
         model.train()
         likelihood.train()
         fit_gpytorch_scipy(mll)
@@ -201,14 +284,17 @@ class CustomKernelGP(gpytorch.models.ExactGP, botorch.models.gpytorch.GPyTorchMo
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
-def create_gp(train_x, train_y, kernel_type, device):
+def create_gp(train_x, train_y, kernel_type, device, noise_init=0.01, noise_prior=True):
 
-    scale = 0.25
-    loc = np.log(0.01) + scale**2 # make sure that mode=0.01
-    noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+    if noise_prior:
+        scale = 0.25
+        loc = np.log(noise_init) + scale**2 # make sure that mode=noise
+        noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+    else:
+        noise_prior = None
 
     likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior).to(device)
-    likelihood.noise_covar.noise = 0.01
+    likelihood.noise_covar.noise = noise_init
 
     if kernel_type == "tanimoto":
         kernel = gpytorch.kernels.ScaleKernel(TanimotoKernel())
