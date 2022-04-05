@@ -192,6 +192,69 @@ def load_covid_moonshot_dataset(csv_file, metadata_path):
     return FSMolTask(name="covid_moonshot", samples=dataset)
 
 
+def load_dockstring_dataset(csv_file, metadata_path):
+    df = pd.read_csv(csv_file, sep=",", header=0)
+    dataset = []
+
+    # get pre-defined atom_feature_extractors from metadata provided in FS-Mol
+    atom_feature_extractors = get_feature_extractors_from_metadata(metadata_path)
+
+    for i, row in df.iterrows():
+
+        # get molecule info from the csv file
+        numeric_label = float(row["ESR2"])
+        smiles = CanonSmiles(row["smiles"].strip())
+        if np.isnan(numeric_label):
+            print(
+                f"Skipping datapoint {smiles} (ESR2 not available)."
+            )
+            continue
+
+        bool_label = None
+        
+        # get fingerprint
+        rdkit_mol = MolFromSmiles(smiles)
+        fp_vec = rdFingerprintGenerator.GetCountFPs([rdkit_mol], fpType=rdFingerprintGenerator.MorganFP)[0]
+        fp_numpy = np.zeros((0,), np.int8) 
+        DataStructs.ConvertToNumpyArray(fp_vec, fp_numpy)
+        
+        # get graph
+        try:
+            graph_dict = molecule_to_graph(rdkit_mol, atom_feature_extractors)
+            adjacency_lists = []
+            for adj_list in graph_dict["adjacency_lists"]:
+                if adj_list:
+                    adjacency_lists.append(np.array(adj_list, dtype=np.int64))
+                else:
+                    adjacency_lists.append(np.zeros(shape=(0, 2), dtype=np.int64))
+            graph = GraphData(
+                node_features=np.array(graph_dict["node_features"], dtype=np.float32), 
+                adjacency_lists=adjacency_lists, 
+                edge_features=[]
+            )
+        except IndexError:
+            print(
+                f"Skipping datapoint {smiles}, cannot featurise with current metadata."
+            )
+            continue
+
+        # get descriptors
+        descriptors = []
+        for descr in Descriptors._descList:
+            _, descr_calc_fn = descr
+            descriptors.append(descr_calc_fn(rdkit_mol))
+        descriptors = np.array(descriptors, dtype=np.float32)
+        
+        # create a MoleculeDatapoint object
+        mol = MoleculeDatapoint(
+            task_name="dockstring", smiles=smiles, graph=graph, 
+            numeric_label=numeric_label, bool_label=bool_label, 
+            fingerprint=fp_numpy, descriptors=descriptors)
+        dataset.append(mol)
+
+    return FSMolTask(name="dockstring", samples=dataset)
+
+
 def task_to_batches(
     task: FSMolTask, batcher: FSMolBatcher[MoleculeDKTFeatures, np.ndarray]
 ):
@@ -204,7 +267,7 @@ def task_to_batches(
 
 
 # Minimizing; data points should be sorted according to the value of y_all in the ascending order
-def run_gp_ei_bo(dataset, x_all, y_all, num_init_points, query_batch_size, num_bo_iters, kernel_type, device, init_from, noise_init=0.01, noise_prior=True):
+def run_gp_ei_bo(dataset, x_all, y_all, num_init_points, query_batch_size, num_bo_iters, kernel_type, device, init_from, noise_init, noise_prior):
     
     y_mean = y_all.mean()
     y_std = y_all.std()
@@ -285,7 +348,7 @@ class CustomKernelGP(gpytorch.models.ExactGP, botorch.models.gpytorch.GPyTorchMo
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
-def create_gp(train_x, train_y, kernel_type, device, noise_init=0.01, noise_prior=True):
+def create_gp(train_x, train_y, kernel_type, device, noise_init, noise_prior):
 
     if noise_prior:
         scale = 0.25

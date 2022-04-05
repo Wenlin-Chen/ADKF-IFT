@@ -357,3 +357,5 @@ outputs
 eval_walltime.sh
 
 .ipynb_checkpoints/
+
+dockstring_train.csv
