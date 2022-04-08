@@ -54,12 +54,6 @@ def parse_command_line():
         default=256,
         help="Size of target set. If -1, use everything but train examples.",
     )
-    parser.add_argument(
-        "--tasks_per_batch",
-        type=int,
-        default=16,
-        help="Number of tasks to accumulate gradients for.",
-    )
 
     parser.add_argument("--batch_size", type=int, default=512, help="Number of examples per batch.")
     parser.add_argument(
@@ -68,7 +62,7 @@ def parse_command_line():
     parser.add_argument(
         "--validate_every",
         type=int,
-        default=50,
+        default=500,
         help="Number of training steps between model validations.",
     )
     parser.add_argument(
@@ -133,7 +127,6 @@ def make_trainer_config(args: argparse.Namespace) -> DKTModelTrainerConfig:
         graph_feature_extractor_config=make_graph_feature_extractor_config_from_args(args),
         used_features=args.features,
         batch_size=args.batch_size,
-        tasks_per_batch=args.tasks_per_batch,
         support_set_size=args.support_set_size,
         query_set_size=args.query_set_size,
         validate_every_num_steps=args.validate_every,

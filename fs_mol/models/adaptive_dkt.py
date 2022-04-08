@@ -48,6 +48,7 @@ class ADKTModel(nn.Module):
 
         # Create MLP if needed:
         if self.use_fc:
+            self.fc_out_dim = 2048
             # Determine dimension:
             fc_in_dim = 0
             if "gnn" in self.config.used_features:
@@ -58,9 +59,9 @@ class ADKTModel(nn.Module):
                 fc_in_dim += PHYS_CHEM_DESCRIPTORS_DIM
 
             self.fc = nn.Sequential(
-                nn.Linear(fc_in_dim, 1024),
+                nn.Linear(fc_in_dim, 2048),
                 nn.ReLU(),
-                nn.Linear(1024, self.config.graph_feature_extractor_config.readout_config.output_dim),
+                nn.Linear(2048, self.fc_out_dim),
             )
 
         self.__create_tail_GP(kernel_type=self.config.gp_kernel)
@@ -100,11 +101,11 @@ class ADKTModel(nn.Module):
             self.gp_model.covar_module.base_kernel.lengthscale = torch.ones_like(self.gp_model.covar_module.base_kernel.lengthscale) * median_lengthscale_init
 
     def __create_tail_GP(self, kernel_type):
-        dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
+        dummy_train_x = torch.ones(64, self.fc_out_dim)
         dummy_train_y = torch.ones(64)
 
         if self.config.use_ard:
-            ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
+            ard_num_dims = self.fc_out_dim
         else:
             ard_num_dims = None
 
@@ -141,8 +142,8 @@ class ADKTModel(nn.Module):
             support_features.append(self.graph_feature_extractor(input_batch.support_features))
             query_features.append(self.graph_feature_extractor(input_batch.query_features))
         if "ecfp" in self.config.used_features:
-            support_features.append(input_batch.support_features.fingerprints)
-            query_features.append(input_batch.query_features.fingerprints)
+            support_features.append(input_batch.support_features.fingerprints.float())
+            query_features.append(input_batch.query_features.fingerprints.float())
         if "pc-descs" in self.config.used_features:
             support_features.append(input_batch.support_features.descriptors)
             query_features.append(input_batch.query_features.descriptors)

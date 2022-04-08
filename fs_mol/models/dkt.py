@@ -50,6 +50,7 @@ class DKTModel(nn.Module):
 
         # Create MLP if needed:
         if self.use_fc:
+            self.fc_out_dim = 2048
             # Determine dimension:
             fc_in_dim = 0
             if "gnn" in self.config.used_features:
@@ -60,14 +61,14 @@ class DKTModel(nn.Module):
                 fc_in_dim += PHYS_CHEM_DESCRIPTORS_DIM
 
             self.fc = nn.Sequential(
-                nn.Linear(fc_in_dim, 1024),
+                nn.Linear(fc_in_dim, 2048),
                 nn.ReLU(),
-                nn.Linear(1024, self.config.graph_feature_extractor_config.readout_config.output_dim),
+                nn.Linear(2048, self.fc_out_dim),
             )
 
         kernel_type = self.config.gp_kernel
         if self.config.use_ard:
-            ard_num_dims = self.config.graph_feature_extractor_config.readout_config.output_dim
+            ard_num_dims = self.fc_out_dim
         else:
             ard_num_dims = None
         self.__create_tail_GP(kernel_type=kernel_type, ard_num_dims=ard_num_dims, use_lengthscale_prior=self.config.use_lengthscale_prior)
@@ -78,7 +79,7 @@ class DKTModel(nn.Module):
             self.normalizing_features = False
 
     def __create_tail_GP(self, kernel_type, ard_num_dims=None, use_lengthscale_prior=False):
-        dummy_train_x = torch.ones(64, self.config.graph_feature_extractor_config.readout_config.output_dim)
+        dummy_train_x = torch.ones(64, self.fc_out_dim)
         dummy_train_y = torch.ones(64)
 
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood()

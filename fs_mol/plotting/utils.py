@@ -1106,18 +1106,19 @@ def plot_by_size(
                 linewidth=lw,
             )
 
-    ax.legend(loc="upper left", ncol=2)
     if numeric:
+        ax.legend(loc="upper left", ncol=2)
         ax.set_ylabel("$R_{os}^2$")
     else:
+        ax.legend(loc="lower right", ncol=2)
         ax.set_ylabel("$\Delta$AUPRC")
     ax.set_xlabel("$N_{\mathcal{S}_{*}}=|\mathcal{S}_{*}|$")
     ax.set_xticks(TRAIN_SIZES_TO_COMPARE)
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE)
     if numeric:
-        ax.set_ylim([0.0, 0.50])
+        ax.set_ylim([0.0, 0.51])
     else:
-        ax.set_ylim([0.0, 0.40])
+        ax.set_ylim([0.0, 0.36])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
 
     fig_file_name = f"comparison_plot_hc_{highlight_class}_numeric.pdf" if numeric else f"comparison_plot_hc_{highlight_class}.pdf"

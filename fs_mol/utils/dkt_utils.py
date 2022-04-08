@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class DKTModelTrainerConfig(DKTModelConfig):
     batch_size: int = 256
-    tasks_per_batch: int = 16
+    tasks_per_batch: int = 1
     support_set_size: int = 16
     query_set_size: int = 256
 

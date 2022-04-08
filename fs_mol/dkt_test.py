@@ -4,6 +4,8 @@ import sys
 from typing import List
 
 import torch
+import numpy as np
+import gpytorch
 from pyprojroot import here as project_root
 
 sys.path.insert(0, str(project_root()))
@@ -98,10 +100,27 @@ def main():
     model = DKTModelTrainer.build_from_model_file(
         model_weights_file,
         device=device,
-    ).to(device)
+    )
     model.test_time_adaptation = args.test_time_adaptation
     if args.test_time_adaptation:
+        scale = 0.25
+        loc = np.log(model.gp_model.covar_module.base_kernel.lengthscale.item()) + scale**2
+        lengthscale_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+        model.gp_model.covar_module.base_kernel.register_prior(
+            "lengthscale_prior", lengthscale_prior, lambda m: m.lengthscale, lambda m, v: m._set_lengthscale(v)
+        )
+
+        likelihood_noise = model.gp_likelihood.noise_covar.noise.item()
+        scale = 0.25
+        loc = np.log(likelihood_noise) + scale**2
+        noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
+        model.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=noise_prior)
+
+        model.mll = gpytorch.mlls.ExactMarginalLogLikelihood(model.gp_likelihood, model.gp_model)
+
         model.save_gp_params()
+
+    model.to(device)
 
     test(
         model,
