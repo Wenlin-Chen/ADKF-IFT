@@ -15,7 +15,7 @@ from fs_mol.data import (
 )
 
 # Assumes that MAT is in the python lib path:
-from featurization.data_utils import construct_dataset, load_data_from_smiles, mol_collate_func
+from third_party.MAT.src.featurization.data_utils import construct_dataset, load_data_from_smiles, mol_collate_func
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,9 @@ def mat_batcher_finalizer_fn(batch_data: Dict[str, Any]) -> Tuple[FSMolMATBatch,
         distance_matrix=distance_matrix,
     )
 
-    return batch, labels.squeeze(dim=-1).cpu().detach().numpy()
+    #numeric_labels = np.stack(batch_data["numeric_labels"], axis=0)
+
+    return batch, labels.squeeze(dim=-1).cpu().detach().numpy()#, numeric_labels
 
 
 def mat_task_reader_fn(paths: List[RichPath], idx: int) -> List[FSMolTask]:

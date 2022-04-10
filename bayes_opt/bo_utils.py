@@ -210,7 +210,7 @@ def load_dockstring_dataset(csv_file, metadata_path):
             )
             continue
 
-        bool_label = None
+        bool_label = False # None
         
         # get fingerprint
         rdkit_mol = MolFromSmiles(smiles)
@@ -256,12 +256,16 @@ def load_dockstring_dataset(csv_file, metadata_path):
 
 
 def task_to_batches(
-    task: FSMolTask, batcher: FSMolBatcher[MoleculeDKTFeatures, np.ndarray]
+    task: FSMolTask, batcher: FSMolBatcher, samples=None
 ):
+    if samples is None:
+        samples = task.samples
+    else:
+        assert task is None
 
     batches = []
-    for features, labels, numeric_labels in batcher.batch(task.samples):
-        batches.append(features)
+    for batch in batcher.batch(samples):
+        batches.append(batch[0])
 
     return batches
 
