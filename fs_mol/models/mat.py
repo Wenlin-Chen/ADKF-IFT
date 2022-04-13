@@ -72,6 +72,7 @@ class MATModel(
         config_overrides: Dict[str, Any] = {},
         quiet: bool = False,
         device: Optional[torch.device] = None,
+        use_numeric_labels=False,
     ) -> MATModel:
         # Parameters used for pretraining the original MAT model.
         model_params = {
@@ -94,5 +95,6 @@ class MATModel(
 
         # Cast to a subclass, which is valid because `MATModel` only adds a bunch of methods.
         model.__class__ = MATModel
+        model.criterion = torch.nn.MSELoss(reduction='none') if use_numeric_labels else torch.nn.BCEWithLogitsLoss(reduction="none")
 
         return model

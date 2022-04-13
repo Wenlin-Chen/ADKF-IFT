@@ -53,7 +53,7 @@ class GNNMultitaskModel(
     def __init__(self, config: GNNMultitaskConfig):
         super().__init__()
         self.config = config
-        self.device = torch.device("cpu")  # Default, we'll override where appropriate
+        #self.device = torch.device("cpu")  # Default, we'll override where appropriate
 
         self.graph_feature_extractor = GraphFeatureExtractor(config.graph_feature_extractor_config)
 
@@ -66,10 +66,6 @@ class GNNMultitaskModel(
             * (self.config.num_tail_layers - 1),
             out_dim=num_tasks,
         )
-
-    def to(self, device):
-        self.device = device
-        return super().to(device)
 
     def reinitialize_task_parameters(self, new_num_tasks: Optional[int] = None):
         self.tail_mlp = self.__create_tail_MLP(new_num_tasks or self.config.num_tasks)
@@ -144,6 +140,7 @@ class GNNMultitaskModel(
         config_overrides: Dict[str, Any] = {},
         quiet: bool = False,
         device: Optional[torch.device] = None,
+        use_numeric_labels=False,
     ) -> "GNNMultitaskModel":
         """Load weights from file, either into an existing model, or a fresh model
         created following the loaded configuration."""
@@ -160,6 +157,7 @@ class GNNMultitaskModel(
             setattr(config, key, val)
 
         model = create_model(config, device)
+        model.criterion = torch.nn.MSELoss(reduction='none') if use_numeric_labels else torch.nn.BCEWithLogitsLoss(reduction="none")
 
         return model
 

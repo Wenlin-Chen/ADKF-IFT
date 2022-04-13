@@ -110,8 +110,8 @@ class CNPModel(nn.Module):
             support_labels_converted = input_batch.support_numeric_labels.float().unsqueeze(1)
             query_labels_converted = input_batch.query_numeric_labels.float().unsqueeze(1)
         else:
-            support_labels_converted = self.__convert_bool_labels(input_batch.support_labels).unsqueeze(1)
-            query_labels_converted = self.__convert_bool_labels(input_batch.query_labels).unsqueeze(1)
+            support_labels_converted = input_batch.support_labels.float().unsqueeze(1)
+            query_labels_converted = input_batch.query_labels.float().unsqueeze(1)
 
         support_labels_embedding = self.encoder_label_fc(support_labels_converted)
         support_pairs = torch.cat([support_features_flat, support_labels_embedding], dim=1)
@@ -122,12 +122,11 @@ class CNPModel(nn.Module):
         decoder_output = self.decoder_fc(query_representation_pairs)
         mu, log_sigma = torch.split(decoder_output, 1, dim=1)
         sigma = 0.01 + 0.09 * torch.nn.functional.softplus(log_sigma)
-
-        dist = torch.distributions.normal.Normal(loc=mu, scale=sigma)
+        
+        if self.config.use_numeric_labels:
+            dist = torch.distributions.normal.Normal(loc=mu, scale=sigma)
+        else:
+            dist = torch.distributions.bernoulli.Bernoulli(logits=mu)
         log_prob = dist.log_prob(query_labels_converted)
 
         return log_prob, mu, sigma
-
-    def __convert_bool_labels(self, labels):
-        # True -> 1.0; False -> -1.0
-        return (labels.float() - 0.5) * 2.0

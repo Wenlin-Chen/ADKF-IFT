@@ -124,6 +124,12 @@ NumericMetricType = Literal[
 def r2_score_os(y_true, y_pred, y_train_mean=0.0):
     assert len(y_true) == len(y_pred)
 
+    if isinstance(y_true, list):
+        y_true = np.array(y_true)
+    if isinstance(y_pred, list):
+        y_pred = np.array(y_pred)
+
+
     numerator = ((y_true - y_pred) ** 2).sum(axis=0, dtype=np.float64)
     denominator = ((y_true - y_train_mean) ** 2).sum(axis=0, dtype=np.float64)
     assert denominator != 0

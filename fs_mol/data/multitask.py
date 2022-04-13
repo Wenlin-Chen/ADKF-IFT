@@ -57,6 +57,7 @@ def multitask_batcher_finalizer_fn(
             **dataclasses.asdict(plain_batch),
         ),
         np.stack(batch_data["bool_labels"], axis=0),
+        np.stack(batch_data["numeric_labels"], axis=0),
     )
 
 
@@ -140,8 +141,8 @@ class MultitaskTaskSampleBatchIterable(Iterable[Tuple[FSMolMultitaskBatch, torch
             if self._data_fold == DataFold.TRAIN:
                 np.random.shuffle(loaded_samples)
 
-            for features, labels in self._batcher.batch(loaded_samples):
-                yield features, labels
+            for features, labels, numeric_labels in self._batcher.batch(loaded_samples):
+                yield features, labels#, numeric_labels
 
         return map(
             partial(torchify, device=self._device),

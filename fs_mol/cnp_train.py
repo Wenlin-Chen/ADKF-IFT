@@ -105,8 +105,8 @@ def parse_command_line():
     )
     parser.add_argument(
         "--use-numeric-labels",
-        action="store_false",
-        help="Default: perform regression for the numeric labels (log concentration).",
+        action="store_true",
+        help="Default: perform classification for the bool labels.",
     )
     args = parser.parse_args()
     return args

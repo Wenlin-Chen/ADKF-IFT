@@ -1148,7 +1148,7 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=Fals
     walltime_std = [np.std(walltime) for walltime in walltime_np]
     x_pos = list(range(len(walltime_list)))
 
-    fig = plt.figure(figsize=(5, 4))
+    fig = plt.figure(figsize=(10, 10))
     barlist = plt.bar(x_pos, walltime_mean,
                       yerr=walltime_std,
                       alpha=0.8, ecolor='black', capsize=12
@@ -1156,12 +1156,12 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=Fals
     #color_list = color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
     #for i, bar in enumerate(barlist):
     #    bar.set_color(color_list[i])
-    plt.xticks(x_pos, method_name_list, size=12, rotation=22)
-    plt.yticks(size=10)
-    plt.ylabel('Wall-clock time (seconds)', size=10)
+    plt.xticks(x_pos, method_name_list, size=25, rotation=22)
+    plt.yticks(size=20)
+    plt.ylabel('Wall-clock time (seconds)', size=25)
     #plt.title('Wall-clock Time of Test Time Adaptation (on CPU)', size=18)
     plt.grid()
-    plt.ylim(0, 800)
+    plt.ylim(0, 600)
     fig.tight_layout()
     fig_file_name = "adaptation_walltime_numeric.pdf" if numeric else "adaptation_walltime.pdf"
     fig.savefig(os.path.join(plot_output_dir, fig_file_name), bbox_inches="tight")

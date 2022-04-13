@@ -353,9 +353,6 @@ MigrationBackup/
 outputs/
 outputs
 
-# Walltime evaluation bash script
-eval_walltime.sh
-
 .ipynb_checkpoints/
 
 dockstring_train.csv

@@ -95,7 +95,7 @@ def main():
     model = ADKTModelTrainer.build_from_model_file(
         model_weights_file,
         device=device,
-    )
+    ).to(device)
 
     torch.cuda.synchronize()
     start_time = time.perf_counter()

@@ -65,6 +65,11 @@ def parse_command_line():
         default=0.00001,
         help="Learning rate for shared model components.",
     )
+    parser.add_argument(
+        "--use-numeric-labels",
+        action="store_true",
+        help="Perform regression for the numeric labels (log concentration). Default: perform binary classification for the bool labels (active/inactive).",
+    )
 
     return parser.parse_args()
 
@@ -89,29 +94,32 @@ def main():
     def test_model_fn(
         task_sample: FSMolTaskSample, temp_out_folder: str, seed: int
     ) -> BinaryEvalMetrics:
+        metric_to_use = "r2" if args.use_numeric_labels else "avg_precision"
         return eval_model_by_finetuning_on_task(
             model_weights_file,
             model_cls=MATModel,
             task_sample=task_sample,
-            temp_out_folder=temp_out_folder,
+            #temp_out_folder=temp_out_folder,
             batcher=get_mat_batcher(args.batch_size),
             learning_rate=args.learning_rate,
             task_specific_learning_rate=args.task_specific_lr,
-            metric_to_use="avg_precision",
+            metric_to_use=metric_to_use,
             seed=seed,
             quiet=True,
             device=device,
+            use_numeric_labels=args.use_numeric_labels,
         )
 
     eval_model(
         test_model_fn=test_model_fn,
         dataset=dataset,
         train_set_sample_sizes=args.train_sizes,
-        out_dir=args.save_dir,
+        out_dir=out_dir,
         num_samples=args.num_runs,
         valid_size_or_ratio=0.2,
         task_reader_fn=mat_task_reader_fn,
         seed=args.seed,
+        filter_numeric_labels=args.use_numeric_labels,
     )
 
 

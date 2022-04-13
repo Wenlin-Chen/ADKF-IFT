@@ -22,6 +22,7 @@ from fs_mol.data.dkt import (
 from fs_mol.utils.adaptive_dkt_utils import ADKTModelTrainer, ADKTModelTrainerConfig
 from fs_mol.utils.dkt_utils import DKTModelTrainer, DKTModelTrainerConfig
 from fs_mol.utils.protonet_utils import PrototypicalNetworkTrainer, PrototypicalNetworkConfig
+from fs_mol.utils.cnp_utils import CNPModelTrainer, CNPModelTrainerConfig
 
 from rdkit import DataStructs
 from rdkit.Chem import (
@@ -253,6 +254,72 @@ def load_dockstring_dataset(csv_file, metadata_path):
         dataset.append(mol)
 
     return FSMolTask(name="dockstring", samples=dataset)
+
+
+def load_cep_dataset(csv_file, metadata_path):
+    df = pd.read_csv(csv_file, sep=",", header=0)
+    df = df.sort_values(by=["PCE"], ascending=False)
+    dataset = []
+
+    # get pre-defined atom_feature_extractors from metadata provided in FS-Mol
+    atom_feature_extractors = get_feature_extractors_from_metadata(metadata_path)
+
+    for i, row in df.iterrows():
+
+        # get molecule info from the csv file
+        raw_numeric_label = float(row["PCE"])
+        smiles = CanonSmiles(row["smiles"].strip())
+        if np.isnan(raw_numeric_label):
+            print(
+                f"Skipping datapoint {smiles} (PCE not available)."
+            )
+            continue
+
+        numeric_label = float(-1.0 * raw_numeric_label)
+
+        bool_label = False # None
+        
+        # get fingerprint
+        rdkit_mol = MolFromSmiles(smiles)
+        fp_vec = rdFingerprintGenerator.GetCountFPs([rdkit_mol], fpType=rdFingerprintGenerator.MorganFP)[0]
+        fp_numpy = np.zeros((0,), np.int8) 
+        DataStructs.ConvertToNumpyArray(fp_vec, fp_numpy)
+        
+        # get graph
+        try:
+            graph_dict = molecule_to_graph(rdkit_mol, atom_feature_extractors)
+            adjacency_lists = []
+            for adj_list in graph_dict["adjacency_lists"]:
+                if adj_list:
+                    adjacency_lists.append(np.array(adj_list, dtype=np.int64))
+                else:
+                    adjacency_lists.append(np.zeros(shape=(0, 2), dtype=np.int64))
+            graph = GraphData(
+                node_features=np.array(graph_dict["node_features"], dtype=np.float32), 
+                adjacency_lists=adjacency_lists, 
+                edge_features=[]
+            )
+        except IndexError:
+            print(
+                f"Skipping datapoint {smiles}, cannot featurise with current metadata."
+            )
+            continue
+
+        # get descriptors
+        descriptors = []
+        for descr in Descriptors._descList:
+            _, descr_calc_fn = descr
+            descriptors.append(descr_calc_fn(rdkit_mol))
+        descriptors = np.array(descriptors, dtype=np.float32)
+        
+        # create a MoleculeDatapoint object
+        mol = MoleculeDatapoint(
+            task_name="cep", smiles=smiles, graph=graph, 
+            numeric_label=numeric_label, bool_label=bool_label, 
+            fingerprint=fp_numpy, descriptors=descriptors)
+        dataset.append(mol)
+
+    return FSMolTask(name="cep", samples=dataset)
 
 
 def task_to_batches(
@@ -533,6 +600,50 @@ class PrototypicalNetworkFeatureExtractor(PrototypicalNetworkTrainer):
         config = checkpoint["model_config"]
 
         model = PrototypicalNetworkFeatureExtractor(config)
+        model.load_model_weights(
+            path=model_file,
+            quiet=quiet,
+            load_task_specific_weights=True,
+            device=device,
+        )
+        return model
+
+
+class CNPModelFeatureExtractor(CNPModelTrainer):
+    def __init__(self, config: CNPModelTrainerConfig):
+        super().__init__(config)
+
+    def get_representation(self, features):
+
+        with torch.no_grad():
+            representation = []
+
+            if "gnn" in self.config.used_features:
+                representation.append(self.graph_feature_extractor(features))
+            if "ecfp" in self.config.used_features:
+                representation.append(features.fingerprints)
+            if "pc-descs" in self.config.used_features:
+                representation.append(features.descriptors)
+
+            representation = torch.cat(representation, dim=1)
+
+            if self.use_fc:
+                representation= self.fc(representation)
+
+        return representation
+
+    @classmethod
+    def build_from_model_file(
+        cls,
+        model_file: str,
+        quiet: bool = True,
+        device: torch.device = None,
+    ):
+        """Build the model architecture based on a saved checkpoint."""
+        checkpoint = torch.load(model_file, map_location=device)
+        config = checkpoint["model_config"]
+
+        model = CNPModelFeatureExtractor(config)
         model.load_model_weights(
             path=model_file,
             quiet=quiet,

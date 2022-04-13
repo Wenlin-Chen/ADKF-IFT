@@ -74,9 +74,9 @@ def mat_batcher_finalizer_fn(batch_data: Dict[str, Any]) -> Tuple[FSMolMATBatch,
         distance_matrix=distance_matrix,
     )
 
-    #numeric_labels = np.stack(batch_data["numeric_labels"], axis=0)
+    numeric_labels = np.stack(batch_data["numeric_labels"], axis=0)
 
-    return batch, labels.squeeze(dim=-1).cpu().detach().numpy()#, numeric_labels
+    return batch, labels.squeeze(dim=-1).cpu().detach().numpy(), numeric_labels
 
 
 def mat_task_reader_fn(paths: List[RichPath], idx: int) -> List[FSMolTask]:

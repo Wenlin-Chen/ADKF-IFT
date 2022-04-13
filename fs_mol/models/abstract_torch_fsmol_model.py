@@ -39,12 +39,16 @@ from fs_mol.utils.logging import PROGRESS_LOG_LEVEL
 from fs_mol.utils.metric_logger import MetricLogger
 from fs_mol.utils.metrics import (
     avg_task_metrics_list,
+    avg_task_numeric_metrics_list,
     compute_metrics,
-    BinaryEvalMetrics,
+    compute_numeric_metrics,
     BinaryMetricType,
 )
+from fs_mol.utils.torch_utils import torchify
 
 logger = logging.getLogger(__name__)
+
+from copy import deepcopy
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,10 @@ class AbstractTorchFSMolModel(
     def __init__(self):
         super().__init__()
         self.criterion = torch.nn.BCEWithLogitsLoss(reduction="none")
+
+    @property
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
 
     @abstractmethod
     def forward(self, batch: BatchFeaturesType) -> BatchOutputType:
@@ -262,7 +270,8 @@ def run_on_data_iterable(
     quiet: bool = False,
     metric_name_prefix: str = "",
     aml_run=None,
-) -> Tuple[float, Dict[int, BinaryEvalMetrics]]:
+    use_numeric_labels=False,
+):
     """Run the given model on the provided data loader.
 
     Args:
@@ -287,7 +296,7 @@ def run_on_data_iterable(
         quiet=quiet,
         metric_name_prefix=metric_name_prefix,
     )
-    for batch_idx, (batch, labels) in enumerate(iter(data_iterable)):
+    for batch_idx, (batch, labels, numeric_labels) in enumerate(iter(data_iterable)):
         if max_num_steps is not None and batch_idx >= max_num_steps:
             break
 
@@ -295,8 +304,12 @@ def run_on_data_iterable(
             optimizer.zero_grad()
 
         predictions: BatchOutputType = model(batch)
-
-        model_loss = model.compute_loss(batch, predictions, labels)
+        if use_numeric_labels:
+            numeric_labels = torchify(numeric_labels, device=model.device)
+            model_loss = model.compute_loss(batch, predictions, numeric_labels)
+        else:
+            labels = torchify(labels, device=model.device)
+            model_loss = model.compute_loss(batch, predictions, labels)
         metric_logger.log_metrics(**model_loss.metrics_to_log)
 
         # Training step:
@@ -317,13 +330,22 @@ def run_on_data_iterable(
 
         # Apply sigmoid to have predictions in appropriate range for computing (scikit) scores.
         num_samples = labels.shape[0]
-        predicted_labels = torch.sigmoid(predictions.molecule_binary_label).detach().cpu()
+        if use_numeric_labels:
+            predicted_labels = predictions.molecule_binary_label.detach().cpu()
+        else:
+            predicted_labels = torch.sigmoid(predictions.molecule_binary_label).detach().cpu()
         for i in range(num_samples):
             task_id = sample_to_task_id[i].item()
             per_task_preds[task_id].append(predicted_labels[i].item())
-            per_task_labels[task_id].append(labels[i].item())
+            if use_numeric_labels:
+                per_task_labels[task_id].append(numeric_labels[i].item())
+            else:
+                per_task_labels[task_id].append(labels[i].item())
 
-    metrics = compute_metrics(per_task_preds, per_task_labels)
+        del predictions
+        del model_loss
+
+    metrics = compute_numeric_metrics(per_task_preds, per_task_labels) if use_numeric_labels else compute_metrics(per_task_preds, per_task_labels)
 
     return metric_logger.get_mean_metric_value("total_loss"), metrics
 
@@ -333,16 +355,18 @@ def validate_on_data_iterable(
     data_iterable: Iterable[Tuple[BatchFeaturesType, torch.Tensor]],
     metric_to_use: MetricType = "avg_precision",
     quiet: bool = False,
+    use_numeric_labels: bool =False,
 ) -> float:
     valid_loss, valid_metrics = run_on_data_iterable(
         model,
         data_iterable=data_iterable,
         quiet=quiet,
+        use_numeric_labels=use_numeric_labels,
     )
     if not quiet:
         logger.info(f"  Validation loss: {valid_loss:.5f}")
     # If our data_iterable had more than one task, we'll have one result per task - average them:
-    mean_valid_metrics = avg_task_metrics_list(list(valid_metrics.values()))
+    mean_valid_metrics = avg_task_numeric_metrics_list(list(valid_metrics.values())) if use_numeric_labels else avg_task_metrics_list(list(valid_metrics.values()))
     if metric_to_use == "loss":
         return -valid_loss  # We are maximising things elsewhere, so flip the sign on the loss
     else:
@@ -362,6 +386,7 @@ def train_loop(
     patience: int = 5,
     aml_run=None,
     quiet: bool = False,
+    use_numeric_labels: bool = False,
 ) -> Tuple[float, ModelStateType]:
     if quiet:
         log_level = logging.DEBUG
@@ -384,6 +409,7 @@ def train_loop(
             quiet=quiet,
             metric_name_prefix="train_",
             aml_run=aml_run,
+            use_numeric_labels=use_numeric_labels,
         )
         mean_train_metric = np.mean(
             [getattr(task_metrics, metric_to_use) for task_metrics in train_metrics.values()]
@@ -425,12 +451,13 @@ def eval_model_by_finetuning_on_task(
     seed: int = 0,
     quiet: bool = False,
     device: Optional[torch.device] = None,
-) -> BinaryEvalMetrics:
+    use_numeric_labels: bool = False,
+):
     # Build the model afresh and load the shared weights.
     model: AbstractTorchFSMolModel[
         BatchFeaturesType, BatchOutputType, BatchLossType
     ] = model_cls.build_from_model_file(
-        model_weights_file, quiet=quiet, device=device, config_overrides={"num_tasks": 1}
+        model_weights_file, quiet=quiet, device=device, config_overrides={"num_tasks": 1}, use_numeric_labels=use_numeric_labels
     )
     load_model_weights(model, model_weights_file, load_task_specific_weights=False)
 
@@ -442,38 +469,72 @@ def eval_model_by_finetuning_on_task(
         task_specific_warmup_steps=2,
     )
 
+    if use_numeric_labels:
+        train_samples = deepcopy(task_sample.train_samples)
+        valid_samples = deepcopy(task_sample.valid_samples)
+        test_samples = deepcopy(task_sample.test_samples)
+        train_numeric_labels = np.array([task_sample.train_samples[i].numeric_label for i in range(len(task_sample.train_samples))])
+        valid_numeric_labels = np.array([task_sample.valid_samples[i].numeric_label for i in range(len(task_sample.valid_samples))])
+        test_numeric_labels = np.array([task_sample.test_samples[i].numeric_label for i in range(len(task_sample.test_samples))])
+        log_train_numeric_labels = np.log(train_numeric_labels)
+        standardize_mean = log_train_numeric_labels.mean()
+        standardize_std = log_train_numeric_labels.std()
+        log_train_numeric_labels_standardized = (log_train_numeric_labels - standardize_mean) / standardize_std
+        log_valid_numeric_labels_standardized = (np.log(valid_numeric_labels) - standardize_mean) / standardize_std
+        log_test_numeric_labels_standardized = (np.log(test_numeric_labels) - standardize_mean) / standardize_std
+        for i in range(len(task_sample.train_samples)):
+            object.__setattr__(train_samples[i], 'numeric_label', float(log_train_numeric_labels_standardized[i]))
+        for i in range(len(task_sample.valid_samples)):
+            object.__setattr__(valid_samples[i], 'numeric_label', float(log_valid_numeric_labels_standardized[i]))
+        for i in range(len(task_sample.test_samples)):
+            object.__setattr__(test_samples[i], 'numeric_label', float(log_test_numeric_labels_standardized[i]))
+    else:
+        train_samples = deepcopy(task_sample.train_samples)
+        valid_samples = deepcopy(task_sample.valid_samples)
+        test_samples = deepcopy(task_sample.test_samples)
+
     best_valid_metric, best_model_state = train_loop(
         model=model,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
-        train_data=FSMolBatchIterable(task_sample.train_samples, batcher, shuffle=True, seed=seed),
+        train_data=FSMolBatchIterable(train_samples, batcher, shuffle=True, seed=seed),
         valid_fn=partial(
             validate_on_data_iterable,
-            data_iterable=FSMolBatchIterable(task_sample.valid_samples, batcher),
+            data_iterable=FSMolBatchIterable(valid_samples, batcher),
             metric_to_use="loss",
             quiet=quiet,
+            use_numeric_labels=use_numeric_labels,
         ),
         metric_to_use=metric_to_use,
         max_num_epochs=max_num_epochs,
         patience=patience,
         quiet=True,
+        use_numeric_labels=use_numeric_labels,
     )
 
     logger.log(PROGRESS_LOG_LEVEL, f" Final validation loss:       {float(best_valid_metric):.5f}")
     # Load best model state and eval on test data:
     model.load_model_state(best_model_state, load_task_specific_weights=True)
-    test_loss, _test_metrics = run_on_data_iterable(
-        model, data_iterable=FSMolBatchIterable(task_sample.test_samples, batcher), quiet=quiet
-    )
+    with torch.no_grad():
+        test_loss, _test_metrics = run_on_data_iterable(
+            model, data_iterable=FSMolBatchIterable(test_samples, batcher), quiet=quiet, use_numeric_labels=use_numeric_labels,
+        )
     test_metrics = next(iter(_test_metrics.values()))
     logger.log(PROGRESS_LOG_LEVEL, f" Test loss:                   {float(test_loss):.5f}")
     logger.info(f" Test metrics: {test_metrics}")
-    logger.info(
-        f"Dataset sample has {task_sample.test_pos_label_ratio:.4f} positive label ratio in test data.",
-    )
+    if not use_numeric_labels:
+        logger.info(
+            f"Dataset sample has {task_sample.test_pos_label_ratio:.4f} positive label ratio in test data.",
+        )
     logger.log(
         PROGRESS_LOG_LEVEL,
         f"Dataset sample test {metric_to_use}: {getattr(test_metrics, metric_to_use):.4f}",
     )
+
+    del model
+    del best_model_state
+    del train_samples
+    del valid_samples
+    del test_samples
 
     return test_metrics
