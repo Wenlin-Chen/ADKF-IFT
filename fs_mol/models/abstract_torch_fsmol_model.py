@@ -297,6 +297,7 @@ def run_on_data_iterable(
         metric_name_prefix=metric_name_prefix,
     )
     for batch_idx, (batch, labels, numeric_labels) in enumerate(iter(data_iterable)):
+
         if max_num_steps is not None and batch_idx >= max_num_steps:
             break
 

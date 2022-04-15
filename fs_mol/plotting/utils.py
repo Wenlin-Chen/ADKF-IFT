@@ -1116,7 +1116,7 @@ def plot_by_size(
     ax.set_xticks(TRAIN_SIZES_TO_COMPARE)
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE)
     if numeric:
-        ax.set_ylim([0.0, 0.51])
+        ax.set_ylim([-0.2, 0.51])
     else:
         ax.set_ylim([0.0, 0.36])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
