@@ -18,8 +18,8 @@ plt.rcParams.update(
     {
         "font.size": 20,
         "text.usetex": False,
-        "font.family": "serif",
-        "font.serif": "Computer Modern Roman",
+        #"font.family": "serif",
+        #"font.serif": "Computer Modern Roman",
     }
 )
 
@@ -869,8 +869,8 @@ def make_box_plot(
         {
             "font.size": 20,
             "text.usetex": True,
-            "font.family": "serif",
-            "font.serif": "Computer Modern Roman",
+            #"font.family": "serif",
+            #"font.serif": "Computer Modern Roman",
         }
     )
 
@@ -1038,14 +1038,17 @@ def plot_by_size(
         (not recommended for many models to compare).
 
     """
-
-    markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "h", ">", "<", "H"]
-    color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
+    if numeric:
+        markers = ["s", "P", "X", "o", "p", "D", "v", "h", ">", "<", "H"]
+        color_set = ["red", "darkorange", "blue", "slategrey", "olive", "black", "plum", "yellow", "teal", "lightgreen"]
+    else:
+        markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "h", ">", "<", "H"]
+        color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
 
     def get_style(cls, model_name):
         if cls == "all":
             label = model_name
-            lw = 1.3
+            lw = 5.0
             ls = "-"
             alpha = 1.0
         else:
@@ -1058,7 +1061,7 @@ def plot_by_size(
 
     # pull all values out of the aggregate df
     vals, stds = collect_model_results(df, model_summaries)
-    categories = {x: i for i, x in enumerate(vals["ADKT"].index)}
+    categories = {x: i for i, x in enumerate(vals["ADKF"].index)}
     if highlight_class is not None:
         assert (
             str(highlight_class) in categories.keys()
@@ -1078,8 +1081,8 @@ def plot_by_size(
         {
             "font.size": 26,
             "text.usetex": True,
-            "font.family": "serif",
-            "font.serif": "Computer Modern Roman",
+            #"font.family": "serif",
+            #"font.serif": "Computer Modern Roman",
         }
     )
 
@@ -1107,14 +1110,15 @@ def plot_by_size(
             )
 
     if numeric:
-        ax.legend(loc="upper left", ncol=2)
-        ax.set_ylabel("$R_{os}^2$")
+        ax.legend(loc="lower right", ncol=2, fontsize=30)
+        ax.set_ylabel("$R_{os}^2$", fontsize=40)
     else:
-        ax.legend(loc="lower right", ncol=2)
-        ax.set_ylabel("$\Delta$AUPRC")
-    ax.set_xlabel("$N_{\mathcal{S}_{*}}=|\mathcal{S}_{*}|$")
-    ax.set_xticks(TRAIN_SIZES_TO_COMPARE)
-    ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE)
+        ax.legend(loc="lower right", ncol=2, fontsize=30)
+        ax.set_ylabel("$\Delta$AUPRC", fontsize=40)
+    ax.set_xlabel("Support set size", fontsize=40)
+    ax.set_xticks(TRAIN_SIZES_TO_COMPARE, fontsize=38)
+    ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE, fontsize=38)
+    ax.tick_params(axis='y', labelsize=38)
     if numeric:
         ax.set_ylim([-0.2, 0.51])
     else:
@@ -1156,9 +1160,9 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=Fals
     #color_list = color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
     #for i, bar in enumerate(barlist):
     #    bar.set_color(color_list[i])
-    plt.xticks(x_pos, method_name_list, size=25, rotation=22)
-    plt.yticks(size=20)
-    plt.ylabel('Wall-clock time (seconds)', size=25)
+    plt.xticks(x_pos, method_name_list, size=28, rotation=22)
+    plt.yticks(size=28)
+    plt.ylabel('Wall-clock time (seconds)', size=30)
     #plt.title('Wall-clock Time of Test Time Adaptation (on CPU)', size=18)
     plt.grid()
     plt.ylim(0, 600)
