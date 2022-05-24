@@ -105,9 +105,9 @@ def load_antibiotics_dataset(xlsx_file, metadata_path):
                 edge_features=[]
             )
         except IndexError:
-            print(
-                f"Skipping datapoint {smiles}, cannot featurise with current metadata."
-            )
+            #print(
+            #    f"Skipping datapoint {smiles}, cannot featurise with current metadata."
+            #)
             continue
 
         # get descriptors
@@ -141,9 +141,9 @@ def load_covid_moonshot_dataset(csv_file, metadata_path):
         raw_numeric_label = float(row["f_avg_IC50"])
         smiles = CanonSmiles(row["SMILES"].strip())
         if np.isnan(raw_numeric_label):
-            print(
-                f"Skipping datapoint {smiles} (IC50 Fluorescence not available)."
-            )
+            #print(
+            #    f"Skipping datapoint {smiles} (IC50 Fluorescence not available)."
+            #)
             continue
 
         numeric_label = float(-1.0 * pic50(raw_numeric_label))
@@ -171,9 +171,9 @@ def load_covid_moonshot_dataset(csv_file, metadata_path):
                 edge_features=[]
             )
         except IndexError:
-            print(
-                f"Skipping datapoint {smiles}, cannot featurise with current metadata."
-            )
+            #print(
+            #    f"Skipping datapoint {smiles}, cannot featurise with current metadata."
+            #)
             continue
 
         # get descriptors
@@ -206,9 +206,9 @@ def load_dockstring_dataset(csv_file, metadata_path):
         numeric_label = float(row["ESR2"])
         smiles = CanonSmiles(row["smiles"].strip())
         if np.isnan(numeric_label):
-            print(
-                f"Skipping datapoint {smiles} (ESR2 not available)."
-            )
+            #print(
+            #    f"Skipping datapoint {smiles} (ESR2 not available)."
+            #)
             continue
 
         bool_label = False # None
@@ -234,9 +234,9 @@ def load_dockstring_dataset(csv_file, metadata_path):
                 edge_features=[]
             )
         except IndexError:
-            print(
-                f"Skipping datapoint {smiles}, cannot featurise with current metadata."
-            )
+            #print(
+            #    f"Skipping datapoint {smiles}, cannot featurise with current metadata."
+            #)
             continue
 
         # get descriptors
@@ -270,9 +270,9 @@ def load_cep_dataset(csv_file, metadata_path):
         raw_numeric_label = float(row["PCE"])
         smiles = CanonSmiles(row["smiles"].strip())
         if np.isnan(raw_numeric_label):
-            print(
-                f"Skipping datapoint {smiles} (PCE not available)."
-            )
+            #print(
+            #    f"Skipping datapoint {smiles} (PCE not available)."
+            #)
             continue
 
         numeric_label = float(-1.0 * raw_numeric_label)
@@ -300,9 +300,9 @@ def load_cep_dataset(csv_file, metadata_path):
                 edge_features=[]
             )
         except IndexError:
-            print(
-                f"Skipping datapoint {smiles}, cannot featurise with current metadata."
-            )
+            #print(
+            #    f"Skipping datapoint {smiles}, cannot featurise with current metadata."
+            #)
             continue
 
         # get descriptors

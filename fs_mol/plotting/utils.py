@@ -1061,7 +1061,7 @@ def plot_by_size(
 
     # pull all values out of the aggregate df
     vals, stds = collect_model_results(df, model_summaries)
-    categories = {x: i for i, x in enumerate(vals["ADKF"].index)}
+    categories = {x: i for i, x in enumerate(vals["ADKF-IFT"].index)}
     if highlight_class is not None:
         assert (
             str(highlight_class) in categories.keys()
@@ -1088,17 +1088,25 @@ def plot_by_size(
 
     fig, ax = plt.subplots(figsize=(15, 15))
 
+    
+    num_tasks = 111 if numeric else 157
+
     for j, model_name in enumerate(model_summaries.keys()):
 
         a = vals[model_name]
         v = stds[model_name]
 
         for cls, i in plot_dict.items():
+            
+            if not plot_all_classes:
+                sem = v.values[i] / np.sqrt(num_tasks)
+                sem[-1] = sem[-1] * np.sqrt(num_tasks) / np.sqrt(43)
+
             ls, lw, label, alpha = get_style(cls, model_name)
             ax.errorbar(
                 TRAIN_SIZES_TO_COMPARE,
                 a.values[i],
-                v.values[i],
+                sem,
                 label=label,
                 linestyle=ls,
                 marker=markers[j],
@@ -1120,9 +1128,9 @@ def plot_by_size(
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE, fontsize=38)
     ax.tick_params(axis='y', labelsize=38)
     if numeric:
-        ax.set_ylim([-0.2, 0.51])
+        ax.set_ylim([-0.2, 0.50])
     else:
-        ax.set_ylim([0.0, 0.36])
+        ax.set_ylim([0.0, 0.35])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
 
     fig_file_name = f"comparison_plot_hc_{highlight_class}_numeric.pdf" if numeric else f"comparison_plot_hc_{highlight_class}.pdf"
@@ -1144,7 +1152,7 @@ def plot_by_size(
     plt.close(fig)
 
 
-def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=False):
+def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=False, num_repeats=5):
     assert len(walltime_list) == len(method_name_list)
 
     walltime_np = [np.array(walltime) for walltime in walltime_list]
@@ -1154,7 +1162,7 @@ def walltime_plot(walltime_list, method_name_list, plot_output_dir, numeric=Fals
 
     fig = plt.figure(figsize=(10, 10))
     barlist = plt.bar(x_pos, walltime_mean,
-                      yerr=walltime_std,
+                      yerr=walltime_std/np.sqrt(num_repeats),
                       alpha=0.8, ecolor='black', capsize=12
                       )
     #color_list = color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
