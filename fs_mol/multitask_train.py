@@ -28,7 +28,7 @@ from fs_mol.modules.graph_feature_extractor import (
     make_graph_feature_extractor_config_from_args,
 )
 from fs_mol.utils.cli_utils import add_train_cli_args, set_up_train_run
-from fs_mol.utils.metrics import avg_metrics_over_tasks, BinaryEvalMetrics
+from fs_mol.utils.metrics import avg_metrics_over_tasks, avg_numeric_metrics_over_tasks
 from fs_mol.utils.test_utils import eval_model
 
 
@@ -47,6 +47,7 @@ def validate_by_finetuning_on_tasks(
     metric_to_use: MetricType = "avg_precision",
     seed: int = 0,
     aml_run=None,
+    use_numeric_labels=False,
 ) -> float:
     with tempfile.TemporaryDirectory() as tempdir:
         # First, store the current state of the model, so that we can just load it back in
@@ -60,7 +61,7 @@ def validate_by_finetuning_on_tasks(
 
         def test_model_fn(
             task_sample: FSMolTaskSample, temp_out_folder: str, seed: int
-        ) -> BinaryEvalMetrics:
+        ):
             return eval_model_by_finetuning_on_task(
                 current_model_path,
                 model_cls=GNNMultitaskModel,
@@ -74,20 +75,25 @@ def validate_by_finetuning_on_tasks(
                 seed=seed,
                 quiet=True,
                 device=model_device,
+                use_numeric_labels=use_numeric_labels,
             )
 
         task_to_results = eval_model(
             test_model_fn=test_model_fn,
             dataset=dataset,
-            train_set_sample_sizes=[16, 128],
+            train_set_sample_sizes=[16, 64],
             num_samples=3,
             valid_size_or_ratio=0.2,
             test_size_or_ratio=512,
             fold=DataFold.VALIDATION,
             seed=seed,
+            filter_numeric_labels=use_numeric_labels,
         )
 
-        mean_metrics = avg_metrics_over_tasks(task_to_results)
+        if use_numeric_labels:
+            mean_metrics = avg_numeric_metrics_over_tasks(task_to_results)
+        else:
+            mean_metrics = avg_metrics_over_tasks(task_to_results)
         if aml_run is not None:
             for metric_name, (metric_mean, _) in mean_metrics.items():
                 aml_run.log(f"valid_task_test_{metric_name}", float(metric_mean))
@@ -111,6 +117,7 @@ def make_model_from_args(
         num_tail_layers=args.num_tail_layers,
     )
     model = create_model(model_config, device=device)
+    model.criterion = torch.nn.MSELoss(reduction='none') if args.use_numeric_labels else torch.nn.BCEWithLogitsLoss(reduction="none")
     return model
 
 
@@ -136,6 +143,9 @@ def add_train_loop_arguments(parser: argparse.ArgumentParser):
             "roc_auc",
             "avg_precision",
             "kappa",
+            "r2",
+            "mse",
+            "mae",
         ],
         default="avg_precision",
         help="Metric to evaluate on validation data.",
@@ -165,6 +175,11 @@ def main():
         type=float,
         default=1.0,
         help="Scaling factor for LRs used in finetuning eval.",
+    )
+    parser.add_argument(
+        "--use-numeric-labels",
+        action="store_true",
+        help="Perform regression for the numeric labels (log concentration). Default: perform binary classification for the bool labels (active/inactive).",
     )
 
     args = parser.parse_args()
@@ -205,6 +220,7 @@ def main():
         metric_to_use=args.metric_to_use,
         seed=args.seed,
         aml_run=aml_run,
+        use_numeric_labels=args.use_numeric_labels,
     )
 
     _, best_model_state = train_loop(
@@ -217,12 +233,14 @@ def main():
             task_name_to_id=train_task_name_to_id,
             max_num_graphs=args.batch_size,
             device=device,
+            use_numeric_labels=args.use_numeric_labels,
         ),
         valid_fn=valid_fn,
         metric_to_use=args.metric_to_use,
         max_num_epochs=args.num_epochs,
         patience=args.patience,
         aml_run=aml_run,
+        use_numeric_labels=args.use_numeric_labels,
     )
 
     torch.save(best_model_state, os.path.join(out_dir, "best_model.pt"))

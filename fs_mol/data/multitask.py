@@ -25,6 +25,8 @@ from fs_mol.data import (
 )
 from fs_mol.utils.torch_utils import torchify
 
+from copy import deepcopy
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,7 @@ def multitask_batcher_finalizer_fn(
             **dataclasses.asdict(plain_batch),
         ),
         np.stack(batch_data["bool_labels"], axis=0),
+        np.stack(batch_data["numeric_labels"], axis=0),
     )
 
 
@@ -111,12 +114,14 @@ class MultitaskTaskSampleBatchIterable(Iterable[Tuple[FSMolMultitaskBatch, torch
         max_num_edges: Optional[int] = None,
         num_chunked_tasks: int = 8,
         repeat: bool = False,
+        use_numeric_labels: bool = False,
     ):
         self._dataset = dataset
         self._data_fold = data_fold
         self._num_chunked_tasks = num_chunked_tasks
         self._repeat = repeat
         self._device = device
+        self.use_numeric_labels = use_numeric_labels
 
         self._task_sampler = RandomTaskSampler(
             train_size_or_ratio=1024, valid_size_or_ratio=0, test_size_or_ratio=0
@@ -135,13 +140,37 @@ class MultitaskTaskSampleBatchIterable(Iterable[Tuple[FSMolMultitaskBatch, torch
             loaded_samples: List[MoleculeDatapoint] = []
             for i, path in enumerate(paths):
                 task = FSMolTask.load_from_file(path)
+
+                if self.use_numeric_labels:
+                    task_numeric_labels = np.array([task.samples[i].numeric_label for i in range(len(task.samples))])
+                    if (
+                        (np.all(task_numeric_labels>=0.0) and np.all(task_numeric_labels<=100.0)) 
+                        or np.any(task_numeric_labels<=0.0) 
+                        or np.any(np.isinf(task_numeric_labels)) 
+                        or np.any(np.isnan(task_numeric_labels))
+                    ):
+                        continue
+                
                 task_sample = self._task_sampler.sample(task, seed=idx + i)
-                loaded_samples.extend(task_sample.train_samples)
+                train_samples = deepcopy(task_sample.train_samples)
+
+                if self.use_numeric_labels:
+                    train_samples = deepcopy(task_sample.train_samples)
+                    train_numeric_labels = np.array([task_sample.train_samples[i].numeric_label for i in range(len(task_sample.train_samples))])
+                    log_train_numeric_labels = np.log(train_numeric_labels)
+                    standardize_mean = log_train_numeric_labels.mean()
+                    standardize_std = log_train_numeric_labels.std()
+                    log_train_numeric_labels_standardized = (log_train_numeric_labels - standardize_mean) / standardize_std
+                    for i in range(len(task_sample.train_samples)):
+                        object.__setattr__(train_samples[i], 'numeric_label', float(log_train_numeric_labels_standardized[i]))
+                
+                loaded_samples.extend(train_samples)
+                
             if self._data_fold == DataFold.TRAIN:
                 np.random.shuffle(loaded_samples)
 
-            for features, labels in self._batcher.batch(loaded_samples):
-                yield features, labels
+            for features, labels, numeric_labels in self._batcher.batch(loaded_samples):
+                yield features, labels, numeric_labels
 
         return map(
             partial(torchify, device=self._device),

@@ -5,8 +5,10 @@ import torch
 
 
 def torchify(data, device: torch.device):
-    if isinstance(data, (int, float, str, torch.Tensor)):
+    if isinstance(data, (int, float, str)):
         return data
+    elif torch.is_tensor(data):
+        return data.to(device)
     elif isinstance(data, tuple):
         return tuple(torchify(e, device) for e in data)
     elif isinstance(data, list):

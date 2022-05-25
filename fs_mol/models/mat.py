@@ -20,7 +20,7 @@ from fs_mol.models.abstract_torch_fsmol_model import (
 )
 
 # Assumes that MAT is in the python lib path:
-from transformer import GraphTransformer, make_model
+from third_party.MAT.src.transformer import GraphTransformer, make_model
 
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,8 @@ class MATModel(
         # contain optimizer state. For now we only want the weights, so throw out the rest.
         if "model_state_dict" in model_state:
             pretrained_state_dict = model_state["model_state_dict"]
+        else:
+            pretrained_state_dict = model_state
 
         for name, param in pretrained_state_dict.items():
             if not load_task_specific_weights and self.is_param_task_specific(name):
@@ -70,6 +72,7 @@ class MATModel(
         config_overrides: Dict[str, Any] = {},
         quiet: bool = False,
         device: Optional[torch.device] = None,
+        use_numeric_labels=False,
     ) -> MATModel:
         # Parameters used for pretraining the original MAT model.
         model_params = {
@@ -92,5 +95,6 @@ class MATModel(
 
         # Cast to a subclass, which is valid because `MATModel` only adds a bunch of methods.
         model.__class__ = MATModel
+        model.criterion = torch.nn.MSELoss(reduction='none') if use_numeric_labels else torch.nn.BCEWithLogitsLoss(reduction="none")
 
         return model
