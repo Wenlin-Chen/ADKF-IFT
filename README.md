@@ -12,6 +12,10 @@
 </script>
 -->
 
+# Disclaimer
+
+This codebase is built upon a fork from [this publicly available GitHub repository from Microsoft Research (FS-Mol)](https://github.com/microsoft/FS-Mol). The README file, license, etc are copied from there. We implement ADKF-IFT (which is called ADKT in this repo), DKT and CNP. We also implement regression on FS-Mol tasks for all models in this repo.
+
 # FS-Mol: A Few-Shot Learning Dataset of Molecules
 
 This repository contains data and code for FS-Mol: A Few-Shot Learning Dataset of Molecules.
