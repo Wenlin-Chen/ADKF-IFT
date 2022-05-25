@@ -14,7 +14,7 @@
 
 # Disclaimer
 
-This codebase is built upon a fork from [this publicly available GitHub repository from Microsoft Research (FS-Mol)](https://github.com/microsoft/FS-Mol). The README file, license, etc are copied from there. We implement ADKF-IFT (which is called ADKT in this repo), DKT and CNP, and support regression on FS-Mol tasks for all models in this repo. We also implement four representative BO experiments with GP operating on the learned feature representations from these models. See our manuscript for detailed descriptions.
+This codebase is built upon a fork from [this publicly available GitHub repository (FS-Mol) from Microsoft Research](https://github.com/microsoft/FS-Mol). The README file, license, etc are copied from there. We implement ADKF-IFT (which is called ADKT in this repo), DKT and CNP, and support regression on FS-Mol tasks for all models in this repo. We also implement four representative BO experiments with GP operating on the learned feature representations from these models. See our manuscript for detailed descriptions.
 
 # FS-Mol: A Few-Shot Learning Dataset of Molecules
 
