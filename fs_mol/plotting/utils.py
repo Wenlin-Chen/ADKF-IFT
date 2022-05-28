@@ -1097,16 +1097,12 @@ def plot_by_size(
         v = stds[model_name]
 
         for cls, i in plot_dict.items():
-            
-            if not plot_all_classes:
-                sem = v.values[i] / np.sqrt(num_tasks)
-                sem[-1] = sem[-1] * np.sqrt(num_tasks) / np.sqrt(43)
 
             ls, lw, label, alpha = get_style(cls, model_name)
             ax.errorbar(
                 TRAIN_SIZES_TO_COMPARE,
                 a.values[i],
-                sem,
+                v.values[i],
                 label=label,
                 linestyle=ls,
                 marker=markers[j],
@@ -1128,9 +1124,9 @@ def plot_by_size(
     ax.set_xticklabels(TRAIN_SIZES_TO_COMPARE, fontsize=38)
     ax.tick_params(axis='y', labelsize=38)
     if numeric:
-        ax.set_ylim([-0.2, 0.50])
+        ax.set_ylim([-0.2, 0.51])
     else:
-        ax.set_ylim([0.0, 0.35])
+        ax.set_ylim([0.0, 0.36])
     plt.grid(True, color="grey", alpha=0.3, linestyle="--")
 
     fig_file_name = f"comparison_plot_hc_{highlight_class}_numeric.pdf" if numeric else f"comparison_plot_hc_{highlight_class}.pdf"
