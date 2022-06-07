@@ -35,6 +35,7 @@ from fs_mol.utils.test_utils import eval_model, FSMolTaskSampleEvalResults
 from botorch.optim.fit import fit_gpytorch_scipy
 
 from fs_mol.utils.cauchy_hypergradient import cauchy_hypergradient
+from fs_mol.utils.cauchy_hypergradient_jvp import cauchy_hypergradient_jvp
 from fs_mol.utils._stateless import functional_call
 
 
