@@ -535,7 +535,7 @@ class PARModelTrainer(PARModel):
                 metric_to_use = "avg_precision"
 
             if step % self.config.validate_every_num_steps == 0:
-                valid_metric = validate_by_finetuning_on_tasks(self, dataset, aml_run=aml_run, metric_to_use=metric_to_use)
+                valid_metric = validate_by_finetuning_on_tasks(maml_model, dataset, aml_run=aml_run, metric_to_use=metric_to_use)
 
                 if aml_run:
                     # printing some measure of loss on all validation tasks.
