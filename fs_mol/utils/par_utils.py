@@ -515,10 +515,10 @@ class PARModelTrainer(PARModel):
                 overall_loss = torch.sum(pred_losses_tensor) / len(pred_losses)
                 self.optimizer.zero_grad()
                 overall_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
+                torch.nn.utils.clip_grad_norm_(maml_model.parameters(), 1)
                 self.optimizer.step()
 
-                print('Train Epoch:',self.train_epoch,', train update step:', k, ', loss_eval:', losses_eval.item())
+                # print('Train Epoch:',self.train_epoch,', train update step:', k, ', loss_eval:', losses_eval.item())
 
             task_batch_mean_loss = overall_loss.detach().cpu().item() #np.mean(pred_losses_tensor.detach().cpu().numpy())
             #task_batch_avg_metrics = avg_task_metrics_list(task_batch_metrics)
