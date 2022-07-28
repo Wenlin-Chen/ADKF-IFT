@@ -12,11 +12,6 @@ from fs_mol.modules.graph_feature_extractor import (
 )
 from fs_mol.data.dkt import DKTBatch
 
-from fs_mol.utils.gp_utils import ExactGPLayer
-
-import gpytorch
-from gpytorch.distributions import MultivariateNormal
-
 #from fs_mol.utils._stateless import functional_call
 
 import sys
