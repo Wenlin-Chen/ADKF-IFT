@@ -217,7 +217,7 @@ def run_on_batches(
                 if model.config.use_numeric_labels:
                     raise NotImplementedError
                 else:
-                    batch_preds = F.softmax(pred_eval['logits'],dim=-1).detach()[:,1]
+                    batch_preds = F.softmax(pred_eval['q_logits'],dim=-1).detach()[:,1]
                     task_labels.append(this_batch_labels.detach().cpu().numpy())
                 task_preds.append(batch_preds)
         
