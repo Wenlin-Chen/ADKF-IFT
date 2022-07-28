@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from pyprojroot import here as project_root
 
 sys.path.insert(0, str(project_root()))
@@ -40,6 +41,9 @@ from fs_mol.utils.cauchy_hypergradient import cauchy_hypergradient
 from fs_mol.utils.cauchy_hypergradient_jvp import cauchy_hypergradient_jvp
 from fs_mol.utils._stateless import functional_call
 
+# Chem lib stuff
+from chem_lib.models.maml import MAML
+
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +51,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class PARModelTrainerConfig(PARModelConfig):
     batch_size: int = 256
-    tasks_per_batch: int = 16
+    tasks_per_batch: int = 9  # from their code
     support_set_size: int = 16
     query_set_size: int = 256
 
@@ -57,8 +61,36 @@ class PARModelTrainerConfig(PARModelConfig):
     validation_query_set_size: int = 256
     validation_num_samples: int = 5
 
+    # Optimization params
     outer_learning_rate: float = 0.001
+    inner_learning_rate: float = 0.001
     clip_value: Optional[float] = None
+    weight_decay: float = 5e-5
+    num_updates_per_batch: int = 1
+    num_inner_update_step: int = 1
+    reg_adj: float = 1.0  # From their code
+
+    # Architecture
+    emb_dim: int = 300
+    map_dim: int = 128
+    map_layer: int = 2
+    batch_norm: bool = False
+    map_dropout: float = 0.1
+    map_pre_fc: int = 0
+    ctx_head: int = 2
+    rel_dropout2: float = 0.2
+    rel_dropout: float = 0.0
+    rel_node_concat: bool = False
+    rel_act: str = "sigmoid"
+    rel_adj: str = "sim"
+    rel_res: float = 0.0
+    rel_k: int = -1
+    rel_hidden_dim: int = 128
+    rel_layer: int = 2
+    rel_edge_layer: int = 2
+
+    # MAML
+    second_order_maml: bool = True
 
     use_numeric_labels: bool = False
 
@@ -71,14 +103,83 @@ def get_predictions(model, data_batch: DKTBatch, train=True, **kwargs):
 
     return pred_dict
 
-def get_loss():
+def get_loss(model: MAML, pred_dict: dict, train: bool, flag: bool, batch_features: DKTBatch):
     """Loss for the PAR model"""
-    # TODO: need to implement this based on "get_loss"
-    raise NotImplementedError
+    criterion = torch.nn.CrossEntropyLoss().to(pred_dict["s_logits"])
+
+    # Cast appropriate things to int
+    support_labels = batch_features.support_labels.to(torch.long)
+    query_labels = batch_features.query_labels.to(torch.long)
+
+    # Define their n_query/etc variables
+    n_query = len(batch_features.query_labels)
+
+    # Simplified version of their logic
+    if train and not flag:
+        # losses_adapt = self.criterion(pred_dict['q_logits'], batch_data['q_label'])
+        losses_adapt = criterion(
+            input=pred_dict['q_logits'], 
+            target=query_labels,
+        )
+    else:
+        losses_adapt = criterion(
+            input=pred_dict['s_logits'].reshape(-1,2), 
+            target=support_labels.repeat(n_query)
+        )
+
+    # This whole block we did not modify, except for changing "batch_data" variables
+    if torch.isnan(losses_adapt).any() or torch.isinf(losses_adapt).any():
+        print('!!!!!!!!!!!!!!!!!!! Nan value for supervised CE loss', losses_adapt)
+        print(pred_dict['s_logits'])
+        losses_adapt = torch.zeros_like(losses_adapt)
+    if model.config.reg_adj > 0:
+        n_support = len(batch_features.support_labels)
+        adj = pred_dict['adj'][-1]
+        if train:
+            if flag:
+                s_label = support_labels.unsqueeze(0).repeat(n_query, 1)
+                n_d = n_query * n_support
+                label_edge = model.label2edge(s_label).reshape((n_d, -1))
+                pred_edge = adj[:,:,:-1,:-1].reshape((n_d, -1))
+            else:
+                s_label = support_labels.unsqueeze(0).repeat(n_query, 1)
+                q_label = query_labels.unsqueeze(1)
+                total_label = torch.cat((s_label, q_label), 1)
+                label_edge = model.label2edge(total_label)[:,:,-1,:-1]
+                pred_edge = adj[:,:,-1,:-1]
+        else:
+            s_label = support_labels.unsqueeze(0)
+            n_d = n_support
+            label_edge = model.label2edge(s_label).reshape((n_d, -1))
+            pred_edge = adj[:, :, :n_support, :n_support].mean(0).reshape((n_d, -1))
+        adj_loss_val = F.mse_loss(pred_edge, label_edge)
+        if torch.isnan(adj_loss_val).any() or torch.isinf(adj_loss_val).any():
+            print('!!!!!!!!!!!!!!!!!!!  Nan value for adjacency loss', adj_loss_val)
+            adj_loss_val = torch.zeros_like(adj_loss_val)
+
+        losses_adapt += model.config.reg_adj * adj_loss_val
+
+    return losses_adapt
     
+def get_adaptable_weights(model):
+    """Hard coded version of the '5' setting in their code."""
+
+    # Note: no warmup
+    fenc = lambda x: x[0]== 'graph_feature_extractor' or x[0] == "enc_fc"
+    fedge = lambda x: x[0]== 'adapt_relation' and 'edge_layer'  in x[1]
+    fnode = lambda x: x[0]== 'adapt_relation' and 'node_layer'  in x[1]
+    flag=lambda x: not (fenc(x) or fnode(x) or fedge(x))
+    adaptable_weights = []
+    adaptable_names=[]
+    for name, p in model.module.named_parameters():
+        names=name.split('.')
+        if flag(names):
+            adaptable_weights.append(p)
+            adaptable_names.append(name)
+    return adaptable_weights
 
 def run_on_batches(
-    model: PARModel,
+    maml_model: MAML,
     batches: List[DKTBatch],
     batch_labels: List[torch.Tensor],
     batch_numeric_labels: List[torch.Tensor],
@@ -86,9 +187,6 @@ def run_on_batches(
     #tasks_per_batch: int = 1,
 ):
     """Does inner loop adaptation."""
-
-    # TODO: this function requires calls to "get_loss" and "get_predictions" to be implemented
-    # TODO: also requires MAML-wrapped model: probably we should do this in this function?
 
     if train:
         assert len(batches) == 1
@@ -101,24 +199,22 @@ def run_on_batches(
     cloned_models = []
     for batch_features, this_batch_labels, this_batch_numeric_labels in zip(batches, batch_labels, batch_numeric_labels):
         
-        # MAML clone
-        # TODO: MAML wrap here??
-        model = self.model.clone()
+        model = maml_model.clone()
         model.train()
-        adaptable_weights = self.get_adaptable_weights(model)
+        adaptable_weights = get_adaptable_weights(model)
         cloned_models.append(model)
                         
         # MAML adaptation
-        for inner_step in range(self.inner_update_step):
-            pred_adapt = self.get_prediction(model, batch_features, train=True)
-            loss_adapt = self.get_loss(model, train_data, pred_adapt, train=True, flag = 1)
+        for inner_step in range(model.config.num_inner_update_step):
+            pred_adapt = get_predictions(model=model, data_batch=batch_features, train=True)
+            loss_adapt = get_loss(model=model, pred_dict=pred_adapt, train=True, flag = True, batch_features=batch_features)
             model.adapt(loss_adapt, adaptable_weights = adaptable_weights)
         
         # Compute loss on the support set at test time
         if not train:
             model.eval()
             with torch.no_grad():
-                pred_eval = self.get_prediction(model, eval_data, train=False)
+                pred_eval = get_predictions(model=model, data_batch=batch_features, train=False)
 
                 if model.config.use_numeric_labels:
                     raise NotImplementedError
@@ -240,7 +336,6 @@ class PARModelTrainer(PARModel):
     def __init__(self, config: PARModelTrainerConfig):
         super().__init__(config)
         self.config = config
-        self.optimizer = torch.optim.Adam(self.feature_extractor_params(), config.learning_rate)
         self.lr_scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
 
     def get_model_state(self) -> Dict[str, Any]:
@@ -373,12 +468,18 @@ class PARModelTrainer(PARModel):
             aml_run=aml_run,
             window_size=max(10, self.config.validate_every_num_steps / 5),
         )
+        
+        # Define model and optimizer
+        maml_model = MAML(self, lr=self.config.inner_learning_rate, first_order=not self.config.second_order_maml, anil=False, allow_unused=True)
+        
+        # Optimizer copied from their code
+        self.optimizer = torch.optim.AdamW(maml_model.parameters(), lr=self.config.outer_learning_rate, weight_decay=self.config.weight_decay)
 
         # Overall outer loop steps
         for step in range(1, self.config.num_train_steps + 1):
             
             # Number of repeated steps on this batch
-            for update_on_current_batch_idx in range(self.update_step):
+            for update_on_current_batch_idx in range(self.config.num_updates_per_batch):
 
                 # Do inner loop on batch, one task at a time
                 pred_losses = []
@@ -389,7 +490,7 @@ class PARModelTrainer(PARModel):
                     batch_labels = train_task_sample.batch_labels
                     batch_numeric_labels = train_task_sample.batch_numeric_labels
                     cloned_models, _ = run_on_batches(
-                        self,
+                        maml_model,
                         batches=batches,
                         batch_labels=batch_labels,
                         batch_numeric_labels=batch_numeric_labels,
@@ -399,9 +500,13 @@ class PARModelTrainer(PARModel):
 
                     # Make model predictions on query set
                     assert len(batches) == len(cloned_models) == 1
-                    pred_eval = get_prediction(model, batches[0], train=True)
-                    pred_loss = self.get_loss(model, batches[0], pred_eval, train=True, flag = 0)
-                    assert False  # TODO: normalize loss
+                    pred_eval = get_predictions(
+                        model=cloned_models[0], data_batch=batches[0], train=True
+                        )
+                    pred_loss = get_loss(
+                        model=cloned_models[0], pred_dict=pred_eval, train=True,
+                        flag=False, batch_features=batches[0]
+                    )
                     pred_losses.append(pred_loss)
                     del pred_loss
                 

@@ -56,7 +56,6 @@ class PARModel(nn.Module):
 
         # Create MLP if needed:
         if self.use_fc:
-            self.fc_out_dim = 512
             # Determine dimension:
             fc_in_dim = 0
             if "gnn" in self.config.used_features:
@@ -66,23 +65,27 @@ class PARModel(nn.Module):
             if "pc-descs" in self.config.used_features:
                 fc_in_dim += PHYS_CHEM_DESCRIPTORS_DIM
 
-            self.fc = nn.Sequential(
-                nn.Linear(fc_in_dim, 2048),
+            self.enc_fc = nn.Sequential(
+                nn.Linear(fc_in_dim, 512),
                 nn.ReLU(),
-                nn.Linear(2048, self.fc_out_dim),
+                nn.Linear(512, self.config.emb_dim),
             )
 
-        self.encode_projection = ContextMLP(inp_dim=args.emb_dim, hidden_dim=args.map_dim, num_layers=args.map_layer,
-                                batch_norm=args.batch_norm,dropout=args.map_dropout,
-                                pre_fc=args.map_pre_fc,ctx_head=args.ctx_head)
+        self.encode_projection = ContextMLP(inp_dim=self.config.emb_dim, hidden_dim=self.config.map_dim, num_layers=self.config.map_layer,
+                                batch_norm=self.config.batch_norm,dropout=self.config.map_dropout,
+                                pre_fc=self.config.map_pre_fc,ctx_head=self.config.ctx_head)
         
-        inp_dim = args.map_dim
-        self.adapt_relation = TaskAwareRelation(inp_dim=inp_dim, hidden_dim=args.rel_hidden_dim,
-                                                num_layers=args.rel_layer, edge_n_layer=args.rel_edge_layer,
-                                                top_k=args.rel_k, res_alpha=args.rel_res,
-                                                batch_norm=args.batch_norm, adj_type=args.rel_adj,
-                                                activation=args.rel_act, node_concat=args.rel_node_concat,dropout=args.rel_dropout,
-                                                pre_dropout=args.rel_dropout2)
+        inp_dim = self.config.map_dim
+        self.adapt_relation = TaskAwareRelation(inp_dim=inp_dim, hidden_dim=self.config.rel_hidden_dim,
+                                                num_layers=self.config.rel_layer, edge_n_layer=self.config.rel_edge_layer,
+                                                top_k=self.config.rel_k, res_alpha=self.config.rel_res,
+                                                batch_norm=self.config.batch_norm, adj_type=self.config.rel_adj,
+                                                activation=self.config.rel_act, node_concat=self.config.rel_node_concat,dropout=self.config.rel_dropout,
+                                                pre_dropout=self.config.rel_dropout2)
+        
+        # Set some extra attributes required by methods below
+        self.edge_type = self.config.rel_adj
+        self.edge_activation = self.config.rel_act
 
     def to_one_hot(self,class_idx, num_classes=2):
         return torch.eye(num_classes)[class_idx].to(class_idx.device)
@@ -143,12 +146,12 @@ class PARModel(nn.Module):
         query_features_flat = torch.cat(query_features, dim=1)
 
         if self.use_fc:
-            support_features_flat = self.fc(support_features_flat)
-            query_features_flat = self.fc(query_features_flat)
+            support_features_flat = self.enc_fc(support_features_flat)
+            query_features_flat = self.enc_fc(query_features_flat)
 
-        if self.normalizing_features:
-            support_features_flat = torch.nn.functional.normalize(support_features_flat, p=2, dim=1)
-            query_features_flat = torch.nn.functional.normalize(query_features_flat, p=2, dim=1)
+        # if self.normalizing_features:
+        #     support_features_flat = torch.nn.functional.normalize(support_features_flat, p=2, dim=1)
+        #     query_features_flat = torch.nn.functional.normalize(query_features_flat, p=2, dim=1)
 
         if self.config.use_numeric_labels:
             raise NotImplementedError

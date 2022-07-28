@@ -2,11 +2,16 @@ import argparse
 import logging
 import sys
 import json
+from pathlib import Path
 
 import torch
 from pyprojroot import here as project_root
 
 sys.path.insert(0, str(project_root()))
+PAR_CODE_PATH = "./PAR-NeurIPS21"
+assert Path(PAR_CODE_PATH).exists()
+sys.path.insert(0, PAR_CODE_PATH)
+
 
 from fs_mol.modules.graph_feature_extractor import (
     add_graph_feature_extractor_arguments,
@@ -57,7 +62,7 @@ def parse_command_line():
     parser.add_argument(
         "--tasks_per_batch",
         type=int,
-        default=16,
+        default=9,  # from their code
         help="Number of tasks to accumulate gradients for.",
     )
 
@@ -93,7 +98,8 @@ def parse_command_line():
         default=5,
         help="Number of samples considered for each train set size for each validation task during evaluation through finetuning.",
     )
-    parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
+    parser.add_argument("--lr_outer", type=float, default=1e-3, help="Outer Learning rate")
+    parser.add_argument("--lr_inner", type=float, default=1e-1, help="Inner MAML Learning rate")
     parser.add_argument(
         "--clip_value", type=float, default=1.0, help="Gradient norm clipping value"
     )
@@ -104,36 +110,17 @@ def parse_command_line():
         help="Path to a pretrained GNN model to use as a starting point.",
     )
     parser.add_argument(
-        "--use-ard",
-        action="store_true",
-        help="Use a different lengthscale for each input dimension to the GP.",
-    )
-    parser.add_argument(
-        "--gp-kernel",
-        type=str,
-        default="matern",
-        help="The GP kernel.",
-    )
-    parser.add_argument(
-        "--use-lengthscale-prior",
-        action="store_false",
-        help="Put a logNormal prior over the lengthscale(s).",
-    )
-    parser.add_argument(
         "--use-numeric-labels",
         action="store_true",
         help="Perform regression for the numeric labels (log concentration). Default: perform binary classification for the bool labels (active/inactive).",
-    )
-    parser.add_argument(
-        "--ignore-grad-correction",
-        action="store_true",
-        help="Ignore the second order term in the hypergradient. Default: False.",
     )
     args = parser.parse_args()
     return args
 
 
 def make_trainer_config(args: argparse.Namespace) -> PARModelTrainerConfig:
+    if args.use_numeric_labels:
+        raise NotImplementedError
     return PARModelTrainerConfig(
         graph_feature_extractor_config=make_graph_feature_extractor_config_from_args(args),
         used_features=args.features,
@@ -146,13 +133,10 @@ def make_trainer_config(args: argparse.Namespace) -> PARModelTrainerConfig:
         validation_query_set_size=args.validation_query_set_size,
         validation_num_samples=args.validation_num_samples,
         num_train_steps=args.num_train_steps,
-        learning_rate=args.lr,
+        outer_learning_rate=args.lr_outer,
+        inner_learning_rate=args.lr_inner,
         clip_value=args.clip_value,
-        use_ard=args.use_ard,
-        gp_kernel=args.gp_kernel,
-        use_lengthscale_prior=args.use_lengthscale_prior,
         use_numeric_labels=args.use_numeric_labels,
-        ignore_grad_correction=args.ignore_grad_correction,
     )
 
 
