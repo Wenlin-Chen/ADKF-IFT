@@ -219,7 +219,7 @@ def run_on_batches(
                 else:
                     batch_preds = F.softmax(pred_eval['q_logits'],dim=-1).detach()[:,1]
                     task_labels.append(this_batch_labels.detach().cpu().numpy())
-                task_preds.append(batch_preds)
+                task_preds.append(batch_preds.detach().cpu().numpy())
         
 
     if train:
