@@ -256,7 +256,7 @@ def evaluate_par_model(
             task_sample_to_dkt_task_sample(task_sample, batcher, model.config.use_numeric_labels), device=model.device
         )
 
-        result_metrics = run_on_batches(
+        _, result_metrics = run_on_batches(
             model,
             batches=dkt_task_sample.batches,
             batch_labels=dkt_task_sample.batch_labels,
