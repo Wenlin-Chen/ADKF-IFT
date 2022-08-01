@@ -200,7 +200,8 @@ def run_on_batches(
         model = maml_model.clone()
         model.train()
         adaptable_weights = get_adaptable_weights(model)
-        cloned_models.append(model)
+        if train:
+            cloned_models.append(model)
                         
         # MAML adaptation
         for inner_step in range(model.config.num_inner_update_step):
