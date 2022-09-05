@@ -16,6 +16,7 @@ from fs_mol.data.dkt import DKTBatch
 
 import sys
 sys.path.append("./PAR-NeurIPS21/")
+sys.path.append("../../PAR-NeurIPS21/")
 from chem_lib.models.mol_model import attention, ContextAwareRelationNet
 from chem_lib.models.relation import MLP, ContextMLP, TaskAwareRelation
 
