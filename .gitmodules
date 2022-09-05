@@ -1,3 +1,6 @@
 [submodule "third_party/MAT"]
 	path = third_party/MAT
 	url = https://github.com/ardigen/MAT
+[submodule "PAR-NeurIPS21"]
+	path = PAR-NeurIPS21
+	url = https://github.com/tata1661/PAR-NeurIPS21.git

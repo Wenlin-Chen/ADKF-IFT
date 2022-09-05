@@ -23,6 +23,7 @@ from fs_mol.utils.adaptive_dkt_utils import ADKTModelTrainer, ADKTModelTrainerCo
 from fs_mol.utils.dkt_utils import DKTModelTrainer, DKTModelTrainerConfig
 from fs_mol.utils.protonet_utils import PrototypicalNetworkTrainer, PrototypicalNetworkConfig
 from fs_mol.utils.cnp_utils import CNPModelTrainer, CNPModelTrainerConfig
+from fs_mol.utils.par_utils import PARModelTrainer, PARModelTrainerConfig
 
 from rdkit import DataStructs
 from rdkit.Chem import (
@@ -469,6 +470,50 @@ def min_so_far(x):
         y.append(curr_min)
 
     return y
+
+
+class PARModelFeatureExtractor(PARModelTrainer):
+    def __init__(self, config: PARModelTrainerConfig):
+        super().__init__(config)
+
+    def get_representation(self, features):
+
+        with torch.no_grad():
+            representation = []
+
+            if "gnn" in self.config.used_features:
+                representation.append(self.graph_feature_extractor(features))
+            if "ecfp" in self.config.used_features:
+                representation.append(features.fingerprints)
+            if "pc-descs" in self.config.used_features:
+                representation.append(features.descriptors)
+
+            representation = torch.cat(representation, dim=1)
+
+            if self.use_fc:
+                representation= self.enc_fc(representation)
+
+        return representation
+
+    @classmethod
+    def build_from_model_file(
+        cls,
+        model_file: str,
+        quiet: bool = True,
+        device: torch.device = None,
+    ):
+        """Build the model architecture based on a saved checkpoint."""
+        checkpoint = torch.load(model_file, map_location=device)
+        config = checkpoint["model_config"]
+
+        model = PARModelFeatureExtractor(config)
+        model.load_model_weights(
+            path=model_file,
+            quiet=quiet,
+            #load_task_specific_weights=True,
+            device=device,
+        )
+        return model
     
 
 class ADKTModelFeatureExtractor(ADKTModelTrainer):
