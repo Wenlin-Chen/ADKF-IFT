@@ -129,6 +129,11 @@ def parse_command_line():
         action="store_true",
         help="Ignore the second order term in the hypergradient. Default: False.",
     )
+    parser.add_argument(
+        "--use-product-kernel",
+        action="store_true",
+        help="Use a product of deep kernel and Tanimoto kernel",
+    )
     args = parser.parse_args()
     return args
 
@@ -153,6 +158,7 @@ def make_trainer_config(args: argparse.Namespace) -> ADKTModelTrainerConfig:
         use_lengthscale_prior=args.use_lengthscale_prior,
         use_numeric_labels=args.use_numeric_labels,
         ignore_grad_correction=args.ignore_grad_correction,
+        use_product_kernel=args.use_product_kernel,
     )
 
 

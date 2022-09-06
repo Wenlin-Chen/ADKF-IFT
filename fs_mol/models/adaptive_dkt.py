@@ -12,7 +12,7 @@ from fs_mol.modules.graph_feature_extractor import (
 )
 from fs_mol.data.dkt import DKTBatch
 
-from fs_mol.utils.gp_utils import ExactGPLayer
+from fs_mol.utils.gp_utils import ExactGPLayer, ExactGPLayerProductKernel
 
 import gpytorch
 from gpytorch.distributions import MultivariateNormal
@@ -119,10 +119,17 @@ class ADKTModel(nn.Module):
             noise_prior = gpytorch.priors.LogNormalPrior(loc=loc, scale=scale)
         
         self.gp_likelihood = gpytorch.likelihoods.GaussianLikelihood(noise_prior=noise_prior).to(self.device)
-        self.gp_model = ExactGPLayer(
-            train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
-            kernel=kernel_type, ard_num_dims=ard_num_dims, use_numeric_labels=self.config.use_numeric_labels
-        ).to(self.device)
+        if self.config.use_product_kernel:
+            dummy_train_x2 = torch.ones(64, 2048)
+            self.gp_model = ExactGPLayerProductKernel(
+                train_x=[dummy_train_x, dummy_train_x2], train_y=dummy_train_y, likelihood=self.gp_likelihood, 
+                kernel=kernel_type, ard_num_dims=ard_num_dims, use_numeric_labels=self.config.use_numeric_labels
+            ).to(self.device)
+        else:
+            self.gp_model = ExactGPLayer(
+                train_x=dummy_train_x, train_y=dummy_train_y, likelihood=self.gp_likelihood, 
+                kernel=kernel_type, ard_num_dims=ard_num_dims, use_numeric_labels=self.config.use_numeric_labels
+            ).to(self.device)
         self.mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.gp_likelihood, self.gp_model).to(self.device)
 
     def compute_median_lengthscale_init(self, gp_input):
@@ -171,12 +178,25 @@ class ADKTModel(nn.Module):
             assert train_loss is not None
             if train_loss: # compute train loss (on the support set)
                 if is_functional_call: # return loss directly
-                    self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-                    logits = self.gp_model(support_features_flat)
+                    if self.config.use_product_kernel:
+                        self.gp_model.set_train_data(
+                            inputs=[support_features_flat, input_batch.support_features.fingerprints.float()], 
+                            targets=support_labels_converted, strict=False
+                        )
+                        logits = self.gp_model(support_features_flat, input_batch.support_features.fingerprints.float())
+                    else:
+                        self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                        logits = self.gp_model(support_features_flat)
                     logits = -self.mll(logits, self.gp_model.train_targets)
                 else:
                     self.reinit_gp_params(support_features_flat.detach(), self.config.use_lengthscale_prior)
-                    self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
+                    if self.config.use_product_kernel:
+                        self.gp_model.set_train_data(
+                            inputs=[support_features_flat.detach(), input_batch.support_features.fingerprints.float()], 
+                            targets=support_labels_converted.detach(), strict=False
+                        )
+                    else:
+                        self.gp_model.set_train_data(inputs=support_features_flat.detach(), targets=support_labels_converted.detach(), strict=False)
                     logits = None
             else: # compute val loss (on the query set)
                 assert is_functional_call == True
@@ -184,23 +204,46 @@ class ADKTModel(nn.Module):
                     self.gp_model.eval()
                     self.gp_likelihood.eval()
                     with gpytorch.settings.detach_test_caches(False):
-                        self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
-                        # return sum of the log predictive losses for all data points, which converges better than averaged loss
-                        logits = -self.gp_likelihood(self.gp_model(query_features_flat)).log_prob(query_labels_converted) #/ self.predictive_targets.shape[0]
+                        if self.config.use_product_kernel:
+                            self.gp_model.set_train_data(
+                                inputs=[support_features_flat, input_batch.support_features.fingerprints.float()], 
+                                targets=support_labels_converted, strict=False
+                            )
+                            # return sum of the log predictive losses for all data points, which converges better than averaged loss
+                            logits = -self.gp_likelihood(self.gp_model(query_features_flat, input_batch.query_features.fingerprints.float())).log_prob(query_labels_converted) #/ self.predictive_targets.shape[0]
+                        else:
+                            self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                            # return sum of the log predictive losses for all data points, which converges better than averaged loss
+                            logits = -self.gp_likelihood(self.gp_model(query_features_flat)).log_prob(query_labels_converted) #/ self.predictive_targets.shape[0]
                     self.gp_model.train()
                     self.gp_likelihood.train()
                 else:
-                    self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
-                    logits = self.gp_model(query_features_flat)
+                    if self.config.use_product_kernel:
+                        self.gp_model.set_train_data(
+                            inputs=[query_features_flat, input_batch.query_features.fingerprints.float()],
+                            targets=query_labels_converted, strict=False
+                        )
+                        logits = self.gp_model(query_features_flat, input_batch.query_features.fingerprints.float())
+                    else:
+                        self.gp_model.set_train_data(inputs=query_features_flat, targets=query_labels_converted, strict=False)
+                        logits = self.gp_model(query_features_flat)
                     logits = -self.mll(logits, self.gp_model.train_targets)
 
         # do GP posterior inference if the model is in the evaluation mode
         else:
             assert train_loss is None
-            self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
 
-            with torch.no_grad():
-                logits = self.gp_likelihood(self.gp_model(query_features_flat))
+            if self.config.use_product_kernel:
+                self.gp_model.set_train_data(
+                    inputs=[support_features_flat, input_batch.support_features.fingerprints.float()], 
+                    targets=support_labels_converted, strict=False
+                )
+                with torch.no_grad():
+                    logits = self.gp_likelihood(self.gp_model(query_features_flat, input_batch.query_features.fingerprints.float()))
+            else:
+                self.gp_model.set_train_data(inputs=support_features_flat, targets=support_labels_converted, strict=False)
+                with torch.no_grad():
+                    logits = self.gp_likelihood(self.gp_model(query_features_flat))
 
         return logits
 

@@ -49,6 +49,18 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
+class ExactGPLayerProductKernel(ExactGPLayer):
+    def __init__(self, train_x, train_y, likelihood, kernel, ard_num_dims=None, use_numeric_labels=False):
+        super().__init__(train_x, train_y, likelihood, kernel, ard_num_dims, use_numeric_labels)
+
+        self.covar_module2 = TanimotoKernel()
+
+    def forward(self, x, x2):
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module(x) * self.covar_module2(x2)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
 class VariationalGPLayer(gpytorch.models.ApproximateGP):
 
     def __init__(self, train_x, train_y, kernel, ard_num_dims=None):
