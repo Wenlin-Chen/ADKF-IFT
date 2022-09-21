@@ -101,6 +101,20 @@ def main():
         model_weights_file,
         device=device,
     )
+
+    # # save GP hyperparameter values
+    # noise_param = model.gp_likelihood.noise_covar.noise.detach().cpu().numpy().squeeze()
+    # outputscale_param = model.gp_model.covar_module.outputscale.detach().cpu().numpy().squeeze()
+    # lengthscale_param = model.gp_model.covar_module.base_kernel.lengthscale.detach().cpu().numpy().squeeze()
+
+    # with open("DKT-GP-hyperparams-regression.txt", "a") as f:
+    #     f.write(str(noise_param))
+    #     f.write(" ")
+    #     f.write(str(outputscale_param))
+    #     f.write(" ")
+    #     f.write(str(lengthscale_param))
+    #     f.write('\n')
+
     model.test_time_adaptation = args.test_time_adaptation
     if args.test_time_adaptation:
         scale = 0.25

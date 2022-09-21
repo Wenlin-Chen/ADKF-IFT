@@ -116,6 +116,19 @@ def run_on_batches(
         else:
             metrics = compute_binary_task_metrics(predictions=predictions, labels=labels)
 
+        # # save GP hyperparameter values
+        # noise_param = model.gp_likelihood.noise_covar.noise.detach().cpu().numpy().squeeze()
+        # outputscale_param = model.gp_model.covar_module.outputscale.detach().cpu().numpy().squeeze()
+        # lengthscale_param = model.gp_model.covar_module.base_kernel.lengthscale.detach().cpu().numpy().squeeze()
+
+        # with open("gp_hyperparams_log_numeric.txt", "a") as f:
+        #     f.write(str(noise_param))
+        #     f.write(" ")
+        #     f.write(str(outputscale_param))
+        #     f.write(" ")
+        #     f.write(str(lengthscale_param))
+        #     f.write('\n')
+
     return metrics
 
 
