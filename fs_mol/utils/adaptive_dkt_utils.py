@@ -121,12 +121,17 @@ def run_on_batches(
         # outputscale_param = model.gp_model.covar_module.outputscale.detach().cpu().numpy().squeeze()
         # lengthscale_param = model.gp_model.covar_module.base_kernel.lengthscale.detach().cpu().numpy().squeeze()
 
-        # with open("gp_hyperparams_log_numeric.txt", "a") as f:
+        # with open("ADKF-IFT-GP-hyperparams-classification.txt", "a") as f:
         #     f.write(str(noise_param))
         #     f.write(" ")
         #     f.write(str(outputscale_param))
         #     f.write(" ")
         #     f.write(str(lengthscale_param))
+        #     f.write(" ")
+        #     if model.config.use_numeric_labels:
+        #         f.write(f"{metrics.r2:.5f}")
+        #     else:
+        #         f.write(f"{metrics.avg_precision:.5f}")
         #     f.write('\n')
 
     return metrics

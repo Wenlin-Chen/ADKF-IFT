@@ -299,6 +299,15 @@ def eval_model(
 
                     try:
                         task_sample = task_sampler.sample(task, seed=local_seed)
+
+                        # with open("ADKF-IFT-GP-hyperparams-classification.txt", "a") as f:
+                        #     f.write(str(task.name))
+                        #     f.write(" ")
+                        #     f.write(str(train_size))
+                        #     f.write(" ")
+                        #     f.write(str(run_idx))
+                        #     f.write(" ")
+
                     except (
                         DatasetTooSmallException,
                         DatasetClassTooSmallException,
