@@ -1039,11 +1039,11 @@ def plot_by_size(
 
     """
     if numeric:
-        markers = ["s", "P", "X", "o", "p", "D", "v", "h", ">", "<", "H"]
-        color_set = ["red", "darkorange", "blue", "slategrey", "olive", "black", "plum", "yellow", "teal", "lightgreen"]
+        markers = ["s", "P", "X", "o", "p", "D", "v", "H"]
+        color_set = ["red", "darkorange", "blue", "slategrey", "olive", "black", "plum", "aquamarine"]
     else:
         markers = ["s", "P", "*", "X", "^", "o", "D", "p", "v", "h", ">", "<", "H"]
-        color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen"]
+        color_set = ["red", "darkorange", "forestgreen", "blue", "darkviolet", "slategrey", "black", "olive", "plum", "yellow", "teal", "lightgreen", "aquamarine"]
 
     def get_style(cls, model_name):
         if cls == "all":
