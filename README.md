@@ -12,9 +12,17 @@
 </script>
 -->
 
+# Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction (ADKF-IFT)
+
+This codebase contains the official PyTorch implementation of `Adaptive Deep Kernel Fitting with Implicit Function Theorem (ADKF-IFT)`, proposed in the paper [Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction](TODO!!!!!!!!!!!!!). 
+
+We implement ADKF-IFT (which is called ADKT in this repo), DKL, DKT and CNP on FS-Mol. We adapt the official code of PAR to FS-Mol. We also add support for performing regression on FS-Mol for all models suitable for regression in this repository. In addition, we implement four representative out-of-domain BO experiments with GP operating on the learned feature representations from these models. Please read our [paper](TODO!!!!!) for detailed descriptions of the methods. 
+
+All raw result data, plots, and notebooks for producing the plots can be found in the `visualize_results` folder.
+
 # Disclaimer
 
-This codebase is built upon a fork from [FS-Mol](https://github.com/microsoft/FS-Mol) and [PAR](https://github.com/tata1661/PAR-NeurIPS21) repositories. The README file, license, etc are copied from there. We implement ADKF-IFT (which is called ADKT in this repo), DKL, DKT and CNP. We adapt the official code of PAR to FS-Mol. We also add support for regression on FS-Mol for all models suitable for regression in this repository. We also implement four representative out-of-domain BO experiments with GP operating on the learned feature representations from these models. Please read our [paper](TODO!!!!!) for detailed descriptions of the methods. All raw result data, plots, and notebooks for producing the plots can be found in the `visualize_results` folder. In case you find our method, code, or results useful for your research, please consider citing TODO!!!!!!!!!!!!!
+This codebase is built upon a fork from [FS-Mol](https://github.com/microsoft/FS-Mol) and [PAR](https://github.com/tata1661/PAR-NeurIPS21) repositories. The README file, license, etc are copied and modified from there.
 
 # Instruction for training and testing ADKF-IFT
 
