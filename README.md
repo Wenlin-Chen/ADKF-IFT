@@ -14,7 +14,37 @@
 
 # Disclaimer
 
-This codebase is built upon a fork from [this publicly available GitHub repository (FS-Mol) from Microsoft Research](https://github.com/microsoft/FS-Mol). The README file, license, etc are copied from there. We implement ADKF-IFT (which is called ADKT in this repo), DKT and CNP, and support regression on FS-Mol tasks for all models in this repo. We also implement four representative BO experiments with GP operating on the learned feature representations from these models. See our manuscript for detailed descriptions.
+This codebase is built upon a fork from [FS-Mol](https://github.com/microsoft/FS-Mol) and [PAR](https://github.com/tata1661/PAR-NeurIPS21) repositories. The README file, license, etc are copied from there. We implement ADKF-IFT (which is called ADKT in this repo), DKL, DKT and CNP. We adapt the official code of PAR to FS-Mol. We also add support for regression on FS-Mol for all models suitable for regression in this repository. We also implement four representative out-of-domain BO experiments with GP operating on the learned feature representations from these models. Please read our [paper](TODO!!!!!) for detailed descriptions of the methods. All raw result data, plots, and notebooks for producing the plots can be found in the `visualize_results` folder. In case you find our method, code, or results useful for your research, please consider citing TODO!!!!!!!!!!!!!
+
+# Instruction for training and testing ADKF-IFT
+
+Meta-training for classification is run as:
+```bash
+python fs_mol/adaptive_dkt_train.py /path/to/dataset
+```
+
+Meta-training for regression is run as:
+```bash
+python fs_mol/adaptive_dkt_train.py /path/to/dataset --use-numeric-labels
+```
+
+Meta-testing is run as: 
+
+```bash
+python fs_mol/adaptive_dkt_test.py /path/to/model_checkpoint /path/to/dataset
+```
+
+Meta-testing results for classification can be collected by running:
+```bash
+python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory}
+```
+
+Meta-testing results for classification can be collected by running:
+```bash
+python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory} --metric r2
+```
+
+Results can then be visualized using the notebooks in the `visualize_results` folder.
 
 # FS-Mol: A Few-Shot Learning Dataset of Molecules
 
