@@ -12,15 +12,17 @@
 </script>
 -->
 
-# Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction (ADKF-IFT)
+# Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction (ADKF-IFT, ICLR 2023)
 
-This codebase contains the official PyTorch implementation of `Adaptive Deep Kernel Fitting with Implicit Function Theorem (ADKF-IFT)`, proposed in the paper _Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction_ [paper link: [arXiv](https://arxiv.org/abs/2205.02708), [OpenReview](https://openreview.net/forum?id=KXRSh0sdVTP)]. 
+This is the official PyTorch implementation of `Adaptive Deep Kernel Fitting with Implicit Function Theorem (ADKF-IFT)`, proposed in the paper _Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction_ (published at ICLR 2023). Please read our paper [[arXiv](https://arxiv.org/abs/2205.02708), [OpenReview](https://openreview.net/forum?id=KXRSh0sdVTP)] for detailed descriptions of the proposed ADKF-IFT method. 
 
-We implement ADKF-IFT (which is called ADKT in this repo), DKL, DKT and CNP on FS-Mol. We adapt the official code of PAR to FS-Mol. We also add support for performing regression on FS-Mol for all models suitable for regression in this repository. In addition, we implement four representative out-of-domain BO experiments with GP operating on the learned feature representations from these models. Please read our paper for detailed descriptions of the methods. 
+We implement ADKF-IFT (which is called ADKT in this repository), DKL, DKT and CNP on FS-Mol. We adapt the official code of PAR to FS-Mol. We also provide code for performing regression on FS-Mol for all models suitable for regression. These can be found in the `fs_mol` folder.
 
-All raw result data, plots, and notebooks for producing the plots can be found in the `visualize_results` folder.
+All **raw result data**, plots, and notebooks for producing the result plots in the paper can be found in the `visualize_results` folder.
 
-If you find our paper, code or raw result data useful for your research, please consider citing our paper:
+In addition, the code for reproducing the four representative out-of-domain molecular design experiments (for prediction and Bayesian optimization) can be found in the `bayes_opt` folder.
+
+If you find our paper, code, or raw result data useful for your research, please consider citing our paper:
 
 ```
 @inproceedings{chen2023metalearning,
@@ -36,19 +38,19 @@ If you find our paper, code or raw result data useful for your research, please 
 
 This codebase is built upon a fork from [FS-Mol](https://github.com/microsoft/FS-Mol) and [PAR](https://github.com/tata1661/PAR-NeurIPS21) repositories. The README file, license, etc are copied and modified from there.
 
-# Instruction for training and testing ADKF-IFT on FS-Mol
+# Instruction for meta-training/testing ADKF-IFT on FS-Mol
 
-Meta-training for classification is run as:
+Meta-training for classification:
 ```bash
 python fs_mol/adaptive_dkt_train.py /path/to/dataset
 ```
 
-Meta-training for regression is run as:
+Meta-training for regression:
 ```bash
 python fs_mol/adaptive_dkt_train.py /path/to/dataset --use-numeric-labels
 ```
 
-Meta-testing is run as: 
+Meta-testing: 
 
 ```bash
 python fs_mol/adaptive_dkt_test.py /path/to/model_checkpoint /path/to/dataset
@@ -59,12 +61,17 @@ Meta-testing results for classification can be collected by running:
 python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory}
 ```
 
-Meta-testing results for classification can be collected by running:
+Meta-testing results for regression can be collected by running:
 ```bash
 python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory} --metric r2
 ```
 
 Results can then be visualized using the notebooks in the `visualize_results` folder.
+
+---
+---
+
+Below is the original README file from the FS-Mol repository.
 
 # FS-Mol: A Few-Shot Learning Dataset of Molecules
 
