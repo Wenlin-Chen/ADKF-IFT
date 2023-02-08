@@ -40,20 +40,39 @@ This codebase is built upon a fork from [FS-Mol](https://github.com/microsoft/FS
 
 # Instruction for meta-training/testing ADKF-IFT on FS-Mol
 
+The following lines of code can be used to set up the repo:
+
+```bash
+# Clone the PAR submodule
+git submodule update --init --recursive
+
+# Create and activate conda environment
+conda env create -f environment.yml
+conda activate adkf-fsmol
+
+# Download and extract dataset
+wget -O fsmol.tar https://figshare.com/ndownloader/files/31345321
+tar -xf fsmol.tar  # creates directory ./fs-mol
+```
+
 Meta-training for classification:
 ```bash
-python fs_mol/adaptive_dkt_train.py /path/to/dataset
+dataset_dir="./fs-mol"  # change as necessary
+python fs_mol/adaptive_dkt_train.py "$dataset_dir"
 ```
 
 Meta-training for regression:
 ```bash
-python fs_mol/adaptive_dkt_train.py /path/to/dataset --use-numeric-labels
+dataset_dir="./fs-mol"  # change as necessary
+python fs_mol/adaptive_dkt_train.py "$dataset_dir" --use-numeric-labels
 ```
 
 Meta-testing: 
 
 ```bash
-python fs_mol/adaptive_dkt_test.py /path/to/model_checkpoint /path/to/dataset
+model_checkpoint="./outputs/{run id}/best_validation.pt"  # change as needed
+dataset_dir="./fs-mol"  # change as necessary
+python fs_mol/adaptive_dkt_test.py "$model_checkpoint" "$dataset_dir"
 ```
 
 Meta-testing results for classification can be collected by running:
