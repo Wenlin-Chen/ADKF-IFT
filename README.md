@@ -48,41 +48,44 @@ git submodule update --init --recursive
 
 # Create and activate conda environment
 conda env create -f environment.yml
-conda activate adkf-fsmol
+conda activate adkf-ift-fsmol
 
 # Download and extract dataset
-wget -O fsmol.tar https://figshare.com/ndownloader/files/31345321
-tar -xf fsmol.tar  # creates directory ./fs-mol
+wget -O fs-mol-dataset.tar https://figshare.com/ndownloader/files/31345321
+tar -xf fs-mol-dataset.tar  # creates directory ./fs-mol
+rm fs-mol-dataset.tar # delete the tar file to save space
+mv fs-mol fs-mol-dataset # rename the folder for better clarity
+dataset_dir="./fs-mol-dataset"  # change as necessary
 ```
 
 Meta-training for classification:
 ```bash
-dataset_dir="./fs-mol"  # change as necessary
 python fs_mol/adaptive_dkt_train.py "$dataset_dir"
 ```
 
 Meta-training for regression:
 ```bash
-dataset_dir="./fs-mol"  # change as necessary
 python fs_mol/adaptive_dkt_train.py "$dataset_dir" --use-numeric-labels
 ```
 
 Meta-testing: 
 
 ```bash
-model_checkpoint="./outputs/{run id}/best_validation.pt"  # change as needed
-dataset_dir="./fs-mol"  # change as necessary
+train_id="YYYY-MM_DD_HH-MM-SS" # change as needed
+model_checkpoint="./outputs/FSMol_ADKTModel_gnn+ecfp+fc_${train_id}/best_validation.pt" # change as needed
 python fs_mol/adaptive_dkt_test.py "$model_checkpoint" "$dataset_dir"
 ```
 
 Meta-testing results for classification can be collected by running:
 ```bash
-python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory}
+eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed
+python fs_mol/plotting/collect_eval_runs.py ADKT "./outputs/FSMol_Eval_ADKTModel_${eval_id}" # change as needed
 ```
 
 Meta-testing results for regression can be collected by running:
 ```bash
-python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory} --metric r2
+eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed
+python fs_mol/plotting/collect_eval_runs.py ADKTNUMERIC "./outputs/FSMol_Eval_ADKTModel_${eval_id}" --metric r2 # change as needed
 ```
 
 Results can then be visualized using the notebooks in the `visualize_results` folder.
