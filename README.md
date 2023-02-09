@@ -55,16 +55,17 @@ wget -O fs-mol-dataset.tar https://figshare.com/ndownloader/files/31345321
 tar -xf fs-mol-dataset.tar  # creates directory ./fs-mol
 rm fs-mol-dataset.tar # delete the tar file to save space
 mv fs-mol fs-mol-dataset # rename the folder for better clarity
-dataset_dir="./fs-mol-dataset"  # change as necessary
 ```
 
 Meta-training for classification:
 ```bash
+dataset_dir="./fs-mol-dataset"  # change as necessary
 python fs_mol/adaptive_dkt_train.py "$dataset_dir"
 ```
 
 Meta-training for regression:
 ```bash
+dataset_dir="./fs-mol-dataset"  # change as necessary
 python fs_mol/adaptive_dkt_train.py "$dataset_dir" --use-numeric-labels
 ```
 

@@ -1,4 +1,4 @@
-name: adkf-fsmol
+name: adkf-ift-fsmol
 channels:
   - conda-forge
   - rdkit
