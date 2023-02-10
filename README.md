@@ -18,7 +18,7 @@ This is the official PyTorch implementation of `Adaptive Deep Kernel Fitting wit
 
 We implement ADKF-IFT (which is called ADKT in this repository), DKL, DKT and CNP on FS-Mol. We adapt the official code of PAR to FS-Mol. We also provide code for performing regression on FS-Mol for all models suitable for regression. These can be found in the `fs_mol` folder.
 
-All **raw result data**, plots, and notebooks for producing the result plots in the paper can be found in the `visualize_results` folder.
+All **raw result data**, plots, and notebooks for producing the result plots in the paper can be found in the `visualize_results` folder. Our ADKF-IFT model checkpoints for both classification and regression can be downloaded from [figshare](https://figshare.com/articles/online_resource/adkf-ift-weights_zip/22070105).
 
 In addition, the code for reproducing the four representative out-of-domain molecular design experiments (for prediction and Bayesian optimization) can be found in the `bayes_opt` folder.
 
