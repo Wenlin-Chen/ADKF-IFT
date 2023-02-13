@@ -55,6 +55,10 @@ wget -O fs-mol-dataset.tar https://figshare.com/ndownloader/files/31345321
 tar -xf fs-mol-dataset.tar  # creates directory ./fs-mol
 rm fs-mol-dataset.tar # delete the tar file to save space
 mv fs-mol fs-mol-dataset # rename the folder for better clarity
+
+# Download and extract pre-trained model weights
+wget -O adkf-ift-weights.zip https://figshare.com/ndownloader/files/39203102
+unzip adkf-ift-weights.zip  # will create 2 .pt files
 ```
 
 Meta-training for classification:
@@ -72,20 +76,22 @@ python fs_mol/adaptive_dkt_train.py "$dataset_dir" --use-numeric-labels
 Meta-testing: 
 
 ```bash
-train_id="YYYY-MM_DD_HH-MM-SS" # change as needed
-model_checkpoint="./outputs/FSMol_ADKTModel_gnn+ecfp+fc_${train_id}/best_validation.pt" # change as needed
+# If you trained a model yourself look for a checkpoint file like:
+# "./outputs/FSMol_ADKTModel_gnn+ecfp+fc_{YYYY-MM_DD_HH-MM-SS}/best_validation.pt" 
+# Otherwise, just use the pretrained model below:
+model_checkpoint="./adkf-ift-classification.pt"  # change as needed
 python fs_mol/adaptive_dkt_test.py "$model_checkpoint" "$dataset_dir"
 ```
 
 Meta-testing results for classification can be collected by running:
 ```bash
-eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed
+eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed (requires running meta-testing first)
 python fs_mol/plotting/collect_eval_runs.py ADKT "./outputs/FSMol_Eval_ADKTModel_${eval_id}" # change as needed
 ```
 
 Meta-testing results for regression can be collected by running:
 ```bash
-eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed
+eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed (requires running meta-testing first)
 python fs_mol/plotting/collect_eval_runs.py ADKTNUMERIC "./outputs/FSMol_Eval_ADKTModel_${eval_id}" --metric r2 # change as needed
 ```
 
