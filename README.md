@@ -14,6 +14,9 @@
 
 # Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction (ADKF-IFT, ICLR 2023)
 
+[![Paper](http://img.shields.io/badge/paper-arxiv.2205.02708-B31B1B.svg)](https://arxiv.org/abs/2205.02708)
+[![Conference](http://img.shields.io/badge/ICLR-2023-4b44ce.svg)](https://openreview.net/forum?id=KXRSh0sdVTP)
+
 This is the official PyTorch implementation of `Adaptive Deep Kernel Fitting with Implicit Function Theorem (ADKF-IFT)`, proposed in the paper _Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction_ (published at ICLR 2023). Please read our paper [[arXiv](https://arxiv.org/abs/2205.02708), [OpenReview](https://openreview.net/forum?id=KXRSh0sdVTP)] for detailed descriptions of the proposed ADKF-IFT method. 
 
 We implement ADKF-IFT (which is called ADKT in this repository), DKL, DKT and CNP on FS-Mol. We adapt the official code of PAR to FS-Mol. We also provide code for performing regression on FS-Mol for all models suitable for regression. These can be found in the `fs_mol` folder.
