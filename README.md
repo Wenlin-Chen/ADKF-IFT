@@ -14,11 +14,18 @@
 
 # Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction (ADKF-IFT, ICLR 2023)
 
+<div align="center">
+
+[![Paper](http://img.shields.io/badge/paper-arxiv.2205.02708-B31B1B.svg)](https://arxiv.org/abs/2205.02708)
+[![Conference](http://img.shields.io/badge/ICLR-2023-4b44ce.svg)](https://openreview.net/forum?id=KXRSh0sdVTP)
+
+</div>
+
 This is the official PyTorch implementation of `Adaptive Deep Kernel Fitting with Implicit Function Theorem (ADKF-IFT)`, proposed in the paper _Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction_ (published at ICLR 2023). Please read our paper [[arXiv](https://arxiv.org/abs/2205.02708), [OpenReview](https://openreview.net/forum?id=KXRSh0sdVTP)] for detailed descriptions of the proposed ADKF-IFT method. 
 
 We implement ADKF-IFT (which is called ADKT in this repository), DKL, DKT and CNP on FS-Mol. We adapt the official code of PAR to FS-Mol. We also provide code for performing regression on FS-Mol for all models suitable for regression. These can be found in the `fs_mol` folder.
 
-All **raw result data**, plots, and notebooks for producing the result plots in the paper can be found in the `visualize_results` folder.
+All **raw result data**, plots, and notebooks for producing the result plots in the paper can be found in the `visualize_results` folder. Our ADKF-IFT model checkpoints for both classification and regression can be downloaded from [figshare](https://figshare.com/articles/online_resource/adkf-ift-weights_zip/22070105).
 
 In addition, the code for reproducing the four representative out-of-domain molecular design experiments (for prediction and Bayesian optimization) can be found in the `bayes_opt` folder.
 
@@ -40,30 +47,59 @@ This codebase is built upon a fork from [FS-Mol](https://github.com/microsoft/FS
 
 # Instruction for meta-training/testing ADKF-IFT on FS-Mol
 
+The following lines of code can be used to set up the repo:
+
+```bash
+# Clone the PAR submodule
+git submodule update --init --recursive
+
+# Create and activate conda environment
+conda env create -f environment.yml
+conda activate adkf-ift-fsmol
+
+# Download and extract dataset
+wget -O fs-mol-dataset.tar https://figshare.com/ndownloader/files/31345321
+tar -xf fs-mol-dataset.tar  # creates directory ./fs-mol
+rm fs-mol-dataset.tar # delete the tar file to save space
+mv fs-mol fs-mol-dataset # rename the folder for better clarity
+
+# Download and extract pre-trained model weights
+wget -O adkf-ift-weights.zip https://figshare.com/ndownloader/files/39203102
+unzip adkf-ift-weights.zip  # will create 2 .pt files
+```
+
 Meta-training for classification:
 ```bash
-python fs_mol/adaptive_dkt_train.py /path/to/dataset
+dataset_dir="./fs-mol-dataset"  # change as necessary
+python fs_mol/adaptive_dkt_train.py "$dataset_dir"
 ```
 
 Meta-training for regression:
 ```bash
-python fs_mol/adaptive_dkt_train.py /path/to/dataset --use-numeric-labels
+dataset_dir="./fs-mol-dataset"  # change as necessary
+python fs_mol/adaptive_dkt_train.py "$dataset_dir" --use-numeric-labels
 ```
 
 Meta-testing: 
 
 ```bash
-python fs_mol/adaptive_dkt_test.py /path/to/model_checkpoint /path/to/dataset
+# If you trained a model yourself look for a checkpoint file like:
+# "./outputs/FSMol_ADKTModel_gnn+ecfp+fc_{YYYY-MM_DD_HH-MM-SS}/best_validation.pt" 
+# Otherwise, just use the pretrained model below:
+model_checkpoint="./adkf-ift-classification.pt"  # change as needed
+python fs_mol/adaptive_dkt_test.py "$model_checkpoint" "$dataset_dir"
 ```
 
 Meta-testing results for classification can be collected by running:
 ```bash
-python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory}
+eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed (requires running meta-testing first)
+python fs_mol/plotting/collect_eval_runs.py ADKT "./outputs/FSMol_Eval_ADKTModel_${eval_id}" # change as needed
 ```
 
 Meta-testing results for regression can be collected by running:
 ```bash
-python fs_mol/plotting/collect_eval_runs.py {model_name} {evaluation_output_directory} --metric r2
+eval_id="YYYY-MM_DD_HH-MM-SS" # change as needed (requires running meta-testing first)
+python fs_mol/plotting/collect_eval_runs.py ADKTNUMERIC "./outputs/FSMol_Eval_ADKTModel_${eval_id}" --metric r2 # change as needed
 ```
 
 Results can then be visualized using the notebooks in the `visualize_results` folder.
