@@ -1,6 +1,6 @@
 # Disclaimer and Instructions
 
-This codebase is built upon a fork from [PAR](https://github.com/tata1661/PAR-NeurIPS21) repositories. The README file, license, etc are copied and modified from there. Below is the original README file from the PAR repository. Please follow their instructions to download the four MoleculeNet datasets (tox21, sider, muv, toxcast) and install required dependencies. 
+This codebase is built upon a fork from [PAR](https://github.com/tata1661/PAR-NeurIPS21) repositories. The README file, license, etc are copied and modified from there. The original README file from the PAR repository can be found at the bottom. Please follow their instructions to download the four MoleculeNet datasets (tox21, sider, muv, toxcast) and install required dependencies. 
 
 # Instruction for meta-training and meta-testing ADKF-IFT on MoleculeNet
 
