@@ -358,3 +358,13 @@ outputs
 dockstring_train.csv
 
 dockstring_regression/
+
+# MoleculeNet
+MoleculeNet/results/
+*.log
+__MACOSX/
+muv/
+sider/
+tox21/
+toxcast/
+data.zip

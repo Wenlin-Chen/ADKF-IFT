@@ -23,13 +23,15 @@
 
 This is the official PyTorch implementation of `Adaptive Deep Kernel Fitting with Implicit Function Theorem (ADKF-IFT)`, proposed in the paper _Meta-learning Adaptive Deep Kernel Gaussian Processes for Molecular Property Prediction_ (published at ICLR 2023). Please read our paper [[arXiv](https://arxiv.org/abs/2205.02708), [OpenReview](https://openreview.net/forum?id=KXRSh0sdVTP)] for detailed descriptions of the proposed ADKF-IFT method. 
 
-We implement ADKF-IFT (which is called ADKT in this repository), DKL, DKT and CNP on FS-Mol. We adapt the official code of PAR to FS-Mol. We also provide code for performing regression on FS-Mol for all models suitable for regression. These can be found in the `fs_mol` folder.
+We implement ADKF-IFT (which is called ADKT in this repository), DKL, DKT and CNP on FS-Mol and MoleculeNet. We adapt the official code of PAR to FS-Mol. We also provide code for performing regression on FS-Mol for all models suitable for regression. These can be found in the `fs_mol` folder.
 
-All **raw result data**, plots, and notebooks for producing the result plots in the paper can be found in the `visualize_results` folder. Our ADKF-IFT model checkpoints for both classification and regression can be downloaded from [figshare](https://figshare.com/articles/online_resource/adkf-ift-weights_zip/22070105).
+All **raw result data**, plots, and notebooks for producing the result plots on the FS-Mol benchmark in the paper can be found in the `visualize_results` folder. Our ADKF-IFT model checkpoints for both classification and regression can be downloaded from [figshare](https://figshare.com/articles/online_resource/adkf-ift-weights_zip/22070105).
+
+The code to run the MoleculeNet experiment with ADKF-IFT can be found in the `MoleculeNet` folder. Please follow the instructions in the `README.md` file there to set up and run those experiments.
 
 In addition, the code for reproducing the four representative out-of-domain molecular design experiments (for prediction and Bayesian optimization) can be found in the `bayes_opt` folder.
 
-If you find our paper, code, or raw result data useful for your research, please consider citing our paper:
+If you find our paper, code, and/or raw result data useful for your research, please consider citing our paper:
 
 ```
 @inproceedings{chen2023metalearning,
