@@ -27,7 +27,7 @@ We implement ADKF-IFT (which is called ADKT in this repository), DKL, DKT and CN
 
 All **raw result data**, plots, and notebooks for producing the result plots on the FS-Mol benchmark in the paper can be found in the `visualize_results` folder. Our ADKF-IFT model checkpoints for both classification and regression can be downloaded from [figshare](https://figshare.com/articles/online_resource/adkf-ift-weights_zip/22070105).
 
-The code for ADKF-IFT can be found in the `MoleculeNet` folder. Please follow the instructions in the `README.md` file there to set up and run those experiments.
+The code to run the MoleculeNet experiment with ADKF-IFT can be found in the `MoleculeNet` folder. Please follow the instructions in the `README.md` file there to set up and run those experiments.
 
 In addition, the code for reproducing the four representative out-of-domain molecular design experiments (for prediction and Bayesian optimization) can be found in the `bayes_opt` folder.
 
